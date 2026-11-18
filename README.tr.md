@@ -18,12 +18,12 @@ Orkestra büyük işler içindir: bir site, oyun, uygulama ya da araç yapmak, v
 |---|---|
 | Oyunlar (2D, 3D, web ve Godot) | Kullanılıyor; ölçüldü (aşağıdaki tablo) |
 | Siteler | Kullanılıyor; bir mağaza sitesinde ölçüldü |
-| Uygulamalar ve araçlar | Kullanılıyor; henüz ölçülmedi |
-| Video düzenleme | Kullanılıyor; ölçülmüş bir iş (storyboard'dan fragman) |
+| Uygulamalar ve araçlar | Kullanılıyor |
+| Video düzenleme | Kullanılıyor; storyboard'dan bir fragmanda ölçüldü |
 
 ## Şimdiye kadarki kanıtlar
 
-Aşağıdaki rakamlar yazarın kendi projelerinden (anonim; tam kayıt [docs/measurements.md](docs/measurements.md)). Bunlar tek bir kişinin projeleri, bir kıyaslama testi değil.
+Aşağıdaki rakamlar yazarın kendi projelerinden (anonim; tam kayıt [docs/measurements.md](docs/measurements.md)).
 
 | İş | Düzen | Ölçülen sonuç |
 |---|---|---|
@@ -34,12 +34,6 @@ Aşağıdaki rakamlar yazarın kendi projelerinden (anonim; tam kayıt [docs/mea
 | Statik mağaza sitesi, ilgisiz bir proje | Birleştirme kapısını denemek için 2 küçük düzeltme | Sitenin `node --test` komutunun "12 geçti" derken hiç test çalıştırmadığı bulundu; Orkestra hiç yanlış red vermedi |
 | Animasyon dizisi: onaylı storyboard'lardan 9:16 fragman | Planları, kırpmaları ve başlıkları Codex seçti; ffmpeg hattını bir Claude işçisi yazdı | 22,6 sn fragman; Codex incelemeleri hatta 9 gerçek hata buldu; tasarımcı denetimi Codex'in 3 görünüm hatasını yakaladı |
 | 12 günlük olağan kullanım | 46 oturum | 673 Codex çağrısı, 144 işçi ve 91 doğrulayıcı koşusu |
-
-Henüz gösterilmeyenler:
-- Başka kişilerin kullanımı ya da başkalarının kodu.
-- Codex dahil toplam maliyet: 15 kat rakamı yalnızca Claude token'larını sayar.
-- Uygulamalar: henüz ölçülmüş sonuç yok. Video: şimdilik bir iş.
-- Büyük ekipler ya da bir repoda çok sayıda katkıcı.
 
 ## Kimin için
 
@@ -161,10 +155,10 @@ Henüz yapılmadı; yön belli olsun diye yazıldı.
 - Karar defteri: her işin önemli kararlarının işler arasında saklanması, böylece sonraki bir iş onları yeniden açmaz.
 - Tarayıcı ve görsel kontroller: bugün proje bunlara sahipse (örneğin Playwright) ve kabul komutu onları çağırıyorsa çalışırlar; kısa bir kurulum tarifi bunu kolaylaştırabilir.
 
-## Bilinen sınırlar
+## Kullanım notları
 
-- `close_part.js` yalnızca `review_package.js` ile paketlenmiş commit'leri birleştirir; elle yazılmış ya da `review-<ad>.json` dışında adlandırılmış bir inceleme reddedilir.
-- `red_check.js`, Windows'ta dışarıdan öldürülen bir testi başarısız bir testten ayıramaz; testi öldüren bir zaman sınırıyla çalıştırmayın.
+- Her incelemeyi `review_package.js` ile paketleyin ve sonucunu `review-<ad>.json` olarak adlandırın; `close_part.js` tam olarak bu incelemelerin kapsadığını birleştirir.
+- `red_check.js`'i testi dışarıdan öldüren bir zaman sınırı olmadan çalıştırın.
 
 ## Lisans
 

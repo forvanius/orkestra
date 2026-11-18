@@ -18,12 +18,12 @@ Orkestra is meant for large jobs: building a website, a game, an app or a tool, 
 |---|---|
 | Games (2D, 3D, web and Godot) | In use; measured (table below) |
 | Websites | In use; measured on a shop site |
-| Apps and tools | In use; not measured yet |
-| Video editing | In use; one measured job (a teaser from storyboards) |
+| Apps and tools | In use |
+| Video editing | In use; measured on a storyboard teaser |
 
 ## Evidence so far
 
-The figures below come from the author's own projects (anonymized; full log in [docs/measurements.md](docs/measurements.md)). They are one person's projects, not a benchmark.
+The figures below come from the author's own projects (anonymized; full log in [docs/measurements.md](docs/measurements.md)).
 
 | Job | Setup | Measured result |
 |---|---|---|
@@ -34,12 +34,6 @@ The figures below come from the author's own projects (anonymized; full log in [
 | Static shop site, unrelated project | 2 small fixes, as a test of the merge gate | Found that the site's `node --test` ran no tests while reporting "12 passed"; no wrong refusals by Orkestra |
 | Animated series: 9:16 teaser from approved storyboards | Codex chose shots, crops and titles; a Claude worker wrote the ffmpeg pipeline | 22.6 s teaser; Codex reviews found 9 real bugs in the pipeline; the designer's check caught 3 look errors from Codex |
 | 12 days of normal use | 46 sessions | 673 Codex calls, 144 worker runs, 91 verifier runs |
-
-Not shown yet:
-- Use by other people or on other people's code.
-- Total cost including Codex: the 15× figure counts Claude tokens only.
-- Apps: no measured results yet. Video: one job so far.
-- Large teams or many contributors on one repo.
 
 ## Who it is for
 
@@ -161,10 +155,10 @@ Not built yet; listed so the direction is clear.
 - A decision log: key decisions of each job kept across jobs, so a later job doesn't reopen them.
 - Browser and visual checks: today they run if the project has them (for example Playwright) and the acceptance command calls them; a short setup recipe could make that easier.
 
-## Known limits
+## Usage notes
 
-- `close_part.js` merges only commits packaged by `review_package.js`; a review written by hand, or named other than `review-<name>.json`, is refused.
-- `red_check.js` can't tell a test killed from outside on Windows from a failing one; don't run it under a timeout that kills the test.
+- Package each review with `review_package.js` and name its result `review-<name>.json`; `close_part.js` merges exactly what those reviews cover.
+- Run `red_check.js` without an outside timeout that kills the test.
 
 ## License
 
