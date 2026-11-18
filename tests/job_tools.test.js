@@ -109,3 +109,30 @@ test('every command that runs a skill script quotes its path (a home folder may 
   });
   assert.deepStrictEqual(offenders, []);
 });
+
+test('a part gets at most three reviews; a fourth needs the user\'s quoted words', () => {
+  const r = repo();
+  const base = r.g('rev-parse', 'HEAD'); const c = [1, 2, 3, 4, 5].map(i => r.commit('round ' + i));
+  const job = fs.mkdtempSync(path.join(os.tmpdir(), 'ork-rounds-'));
+  assert.strictEqual(reviewPackage(job, 'A', base, c[0], r.dir).code, 0);
+  assert.strictEqual(reviewPackage(job, 'A-2', c[0], c[1], r.dir).code, 0);
+  assert.strictEqual(reviewPackage(job, 'A-3', c[1], c[2], r.dir).code, 0);
+  const four = reviewPackage(job, 'A-4', c[2], c[3], r.dir);
+  assert.strictEqual(four.code, 4);
+  assert.match(four.error, /ask the user/);
+  assert.strictEqual(reviewPackage(job, 'A-4-codex', c[2], c[3], r.dir).code, 4);                 // a second reviewer too
+  assert.strictEqual(reviewPackage(job, 'A-4-claude-sonnet', c[2], c[3], r.dir).code, 4);         // a suffix with hyphens
+  assert.strictEqual(reviewPackage(job, 'A-4', c[2], c[3], r.dir, { userApproved: '  ' }).code, 4);
+  assert.strictEqual(reviewPackage(job, 'A-4', c[2], c[3], r.dir, { userApproved: 'one more round, then merge' }).code, 0);
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(job, 'diff-A-4.range.json'), 'utf8')).user_approved, 'one more round, then merge');
+  assert.strictEqual(reviewPackage(job, 'step-10', base, c[4], r.dir).code, 0);                   // not a re-review: no part "step"
+});
+
+test('the review bar: real-use bugs block, hardening and narrower edge cases of a fix are polish', () => {
+  for (const f of ['skills/orkestra/templates/review.txt', 'agents/reviewer.md']) {
+    const t = fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    assert.match(t, /behave wrongly in real use/, f);
+    assert.match(t, /is polish, not a blocker/, f);
+    assert.match(t, /narrower edge case of the fix is polish/, f);
+  }
+});

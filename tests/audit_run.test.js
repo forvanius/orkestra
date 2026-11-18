@@ -402,3 +402,34 @@ test('the vendor warning stays when the board forbids same-vendor review or name
     assert.ok(findings.some(f => f.rule === 'routing' && /came from Claude/.test(f.msg)), line);
   }
 });
+
+test('a worker resumed several times is timed per run; a Codex call that returned at once is "not timed", not 0', () => {
+  const { runsOf } = require('../skills/orkestra/audit_run.js');
+  const prompt = min => ({ type: 'user', timestamp: T(min), message: { content: 'continue with the fix' } });
+  const resumed = [prompt(0), asst(1, 1000, 'low', 'claude-sonnet-x'), asst(20, 1000, 'low', 'claude-sonnet-x'), prompt(30), asst(31, 1000, 'low', 'claude-sonnet-x'), asst(50, 1000, 'low', 'claude-sonnet-x')];
+  assert.deepStrictEqual(runsOf(resumed).length, 2);
+  let { facts, findings } = audit(fixture([asst(0, 50_000), asst(60, 60_000)], [['write part B', 'orkestra:worker', resumed]]), ['s1'], {});
+  assert.ok(!findings.some(f => f.rule === 'time-limit'), JSON.stringify(findings));
+  assert.strictEqual(facts.subagents[0].runs, 2);
+  const oneGo = [prompt(0), asst(1, 1000, 'low', 'claude-sonnet-x'), asst(35, 1000, 'low', 'claude-sonnet-x')];
+  ({ findings } = audit(fixture([asst(0, 50_000), asst(60, 60_000)], [['write part C', 'orkestra:worker', oneGo]]), ['s1'], {}));
+  assert.ok(findings.some(f => f.rule === 'time-limit' && /in one go/.test(f.msg)));
+  ({ facts } = audit(fixture([asst(0, 50_000), use(1, 'i1', 'Bash', { command: `node guarded.js codex -- codex exec -m gpt-x -s workspace-write -i ref.png - < look.txt > look.log 2>&1` }), res(1, 'i1', ''), asst(5, 60_000)]), ['s1'], { codexModel: 'gpt-x' }));
+  assert.strictEqual(facts.codex[0].role, 'image');
+  assert.strictEqual(facts.codex[0].minutes, null);
+  assert.strictEqual(facts.codex[0].untimed, true);
+});
+
+test('a system reminder is not a new run, and the wait before a resumption is not parallel work', () => {
+  const { runsOf } = require('../skills/orkestra/audit_run.js');
+  const prompt = (min, text) => ({ type: 'user', timestamp: T(min), message: { content: text } });
+  const reminded = [prompt(0, 'write part B'), asst(1, 1000, 'low', 'claude-sonnet-x'), prompt(10, '<system-reminder>\nLinked sessions now\n</system-reminder>'), asst(40, 1000, 'low', 'claude-sonnet-x')];
+  assert.strictEqual(runsOf(reminded).length, 1);
+  const { findings } = audit(fixture([asst(0, 50_000), asst(60, 60_000)], [['write part B', 'orkestra:worker', reminded]]), ['s1'], {});
+  assert.ok(findings.some(f => f.rule === 'time-limit' && /40 min in one go/.test(f.msg)), JSON.stringify(findings));
+  // Three agents busy from 20 to 30 while a fourth waits between its runs (0-5 and 40-45): never four at once.
+  const busy = d => [prompt(20, 'go'), asst(21, 1000, 'low', 'claude-sonnet-x'), asst(30, 1000, 'low', 'claude-sonnet-x')];
+  const resumed = [prompt(0, 'go'), asst(5, 1000, 'low', 'claude-sonnet-x'), prompt(40, 'continue'), asst(45, 1000, 'low', 'claude-sonnet-x')];
+  const { facts } = audit(fixture([asst(0, 50_000), asst(60, 60_000)], [['a', 'orkestra:worker', busy()], ['b', 'orkestra:worker', busy()], ['c', 'orkestra:worker', busy()], ['d', 'orkestra:worker', resumed]]), ['s1'], {});
+  assert.strictEqual(facts.maxParallelClaude, 3);
+});

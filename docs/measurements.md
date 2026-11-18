@@ -27,6 +27,14 @@ every call re-reads the whole context.
 - 3D models (13 GLB + binding + smoke): Codex 2 parallel writes (it ran Blender headless in its sandbox and produced GLBs/previews; it could not run the smoke test) + 1 review. Haiku 4 calls 0.19 M. File ownership (A: only the Blender script; B: script + loader + smoke) made parallel work clean. Trap: a CRLF working copy — preserve existing line endings when editing by script.
 - Effects + enemy redesign + docs: Codex 5 writes + 1 review (REVISE, 2 real bugs). The verifier's smoke run caught 2 more real bugs. Lesson: geometry tests Codex writes without a browser often fail on first real run — never trust a PASS without the smoke run. 3 parallel Codex writers with file ownership: no conflicts.
 
+## Video (Project C, an animated series)
+- Job: a 9:16 teaser (1080×1920, 30 fps, H.264 + AAC, 22.6 s, 10 shots) from the approved storyboard sheets of one episode, with camera moves, title cards and sound. Split: the look to Codex through the designer (shot choice, order, crop boxes, moves, titles, as an edit-decision list), the edit pipeline to a Claude worker (a script that crops, animates, titles and renders with ffmpeg, plus tests that check the file with ffprobe).
+- Codex on the look: one round, 65 K tokens; a coherent order and timing that mostly stayed. It let storyboard camera arrows into 5 crops, chose cream titles where the script says gold, and left out a sound cue; the designer's visual check caught all three.
+- Claude on the pipeline: first working version in 4.7 min, with 9 real bugs the Codex review found (zoom capped at 10× so the move ended on the wrong frame, fades that never reached black, a title outliving its slot, a zero-length audio fade lasting ~0.9 s, a test that passed when no mp4 was written). Fixed; the camera path is now tested numerically (max step error 0.46 px).
+- Review ran 8 rounds, 7 REVISE; rounds 3–7 each found a narrower edge case in one error-message line. → 0.6.1: a fourth review round needs the user's word (`review_package.js`), and hardening against inputs the project never produces is polish, not a blocker.
+- Agents' report writes were refused by the environment; the conductor had no clean way to save their final messages. → `take_report.js --file`.
+- About 65 min. Claude 34.4 M cache reads (conductor 13.8 M, worker 14.7 M, designer 5.9 M); Codex 2.5 M tokens (look 74 K on the design model, 8 reviews 2.4 M).
+
 ## Long worker loops (Project B)
 - Worker loops took 16–79 min (one smoke run 2.5–7 min). Causes: tests written without a browser failing first, a full smoke run on every fix, flaky timing checks, two sessions running smoke at once and saturating the CPU (11 headless Chromes, software GL). → Rules: ~25 min limit in every worker brief; in fix rounds run only the failing section; full smoke once before commit; smoke at low priority, ≤3 parallel sections.
 

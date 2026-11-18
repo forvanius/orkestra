@@ -109,3 +109,28 @@ test('red check: an interrupted run is restored by --restore, and a test that re
   const whole = require('child_process').spawnSync(process.execPath, [cli, '--repo', r.dir, '--base', r.base, '--revert', 'lib.js', '--', 'node lib.test.js'], { encoding: 'utf8' });
   assert.strictEqual(whole.status, 0, whole.stdout + whole.stderr);
 });
+
+test('an agent whose write was refused: its whole final message is saved as it came, a summary is not', () => {
+  const { saveFinalMessage } = require('../skills/orkestra/take_report.js');
+  const job = path.join(tmp('ork-job-'), '.orkestra', 'pilot'); fs.mkdirSync(job, { recursive: true });
+  const full = 'Did the edit pipeline; tests in tests/video.\n'.repeat(6) + 'VERDICT: APPROVE\n{"verdict":"APPROVE","checks":[{"cmd":"npm test","exit":0}]}';
+  assert.strictEqual(saveFinalMessage(job, 'report-B', 'B done, all good').code, 1);                 // a summary
+  assert.strictEqual(saveFinalMessage(job, 'report-B', 'x'.repeat(300)).code, 1);                    // no contract
+  const r = saveFinalMessage(job, 'report-B', full);
+  assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+  assert.match(fs.readFileSync(path.join(job, 'report-B.md'), 'utf8'), /^<!-- saved by the conductor from the agent's final message/);
+  assert.strictEqual(saveFinalMessage(job, 'report-B', full).code, 1);                               // never overwritten
+});
+
+test('a summary quoting the verdict mid-sentence is not a report; --file reads UTF-8 as written', () => {
+  const { saveFinalMessage } = require('../skills/orkestra/take_report.js');
+  const job = path.join(tmp('ork-job-'), '.orkestra', 'pilot'); fs.mkdirSync(job, { recursive: true });
+  const quoted = 'The worker finished part B and said VERDICT: APPROVE in its message, tests are fine. '.repeat(4);
+  assert.strictEqual(saveFinalMessage(job, 'report-B', quoted).code, 1);
+  const msg = path.join(tmp('ork-msg-'), 'message.txt');
+  fs.writeFileSync(msg, 'Kurgu hattı: kararma, başlık, ses düzeltildi; çıktı 22,6 sn.\n'.repeat(5) + 'VERDICT: APPROVE\n{"verdict":"APPROVE"}');
+  const cli = path.join(__dirname, '..', 'skills', 'orkestra', 'take_report.js');
+  const r = require('child_process').spawnSync(process.execPath, [cli, job, 'report-B', '--file', msg], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(fs.readFileSync(path.join(job, 'report-B.md'), 'utf8'), /Kurgu hattı: kararma, başlık/);
+});

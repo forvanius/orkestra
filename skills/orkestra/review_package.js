@@ -9,12 +9,22 @@
 // the review saw, so a commit added after the review can't ride on its approval. A name holds one range.
 // The review's result goes to review-<name>.json in the same folder; that is how the two are paired.
 // Prints the diff file's path, nothing else. Exit: 0 = ok, 2 = bad input, 3 = empty range, base is not
-// an ancestor of head (the writer committed elsewhere), or <name> already holds a different range.
+// an ancestor of head (the writer committed elsewhere), or <name> already holds a different range;
+// 4 = <part>-4 or later without --user-approved (the review-round limit).
 const fs = require('fs'), path = require('path');
 const { git } = require('./board_check.js');
 
-function reviewPackage(jobDir, name, base, head, repo = process.cwd()) {
+// Rule 8 as a gate, not a memory: a part gets its review and at most two re-reviews (<part>-2 after the
+// writer's fix, <part>-3 after the conductor's own diagnosis). A fourth review only with the user's
+// word, quoted; a video pilot ran eight rounds, each on a narrower edge case of the last fix.
+const MAX_REVIEWS = 3;
+
+function reviewPackage(jobDir, name, base, head, repo = process.cwd(), { userApproved = null } = {}) {
   if (!/^[\w.-]+$/.test(name || '')) return { code: 2, error: `bad name: ${name}` };
+  // A re-review is <part>-N (a second reviewer may add a suffix: <part>-N-codex) of a part already packaged.
+  const m = name.match(/^(.+?)-(\d+)(?:-[A-Za-z][\w-]*)?$/);
+  const round = m && fs.existsSync(path.join(jobDir, `diff-${m[1]}.range.json`)) ? m[2] : null;
+  if (round && +round > MAX_REVIEWS && !(userApproved && userApproved.trim())) return { code: 4, error: `${name} would be review round ${round}; the limit is ${MAX_REVIEWS}. Stop and ask the user: merge with the open findings recorded, fix them yourself, or drop the part. Only with their answer, rerun with --user-approved "<their words>"` };
   for (const r of [base, head]) if (git(repo, ['cat-file', '-e', r + '^{commit}']).status !== 0) return { code: 2, error: `commit ${r} not found in ${repo}` };
   if (git(repo, ['merge-base', '--is-ancestor', base, head]).status !== 0) return { code: 3, error: `${base} is not an ancestor of ${head}` };
   const range = `${base}..${head}`, log = git(repo, ['log', '--oneline', range]).stdout;
@@ -26,15 +36,17 @@ function reviewPackage(jobDir, name, base, head, repo = process.cwd()) {
   // One name, one range: repackaging under the same name could pair an old review with new commits.
   let was = null; try { was = JSON.parse(fs.readFileSync(rangeFile, 'utf8')); } catch { }
   if (was && (was.base !== want.base || was.head !== want.head)) return { code: 3, error: `diff-${name}.range.json already holds ${String(was.base).slice(0, 9)}..${String(was.head).slice(0, 9)}: package the new commits as ${name}-2` };
+  if (round && +round > MAX_REVIEWS) want.user_approved = userApproved.trim();
   fs.writeFileSync(rangeFile, JSON.stringify(want) + '\n');
   fs.writeFileSync(file, `# Commits ${range}\n${log}\n# Files\n${git(repo, ['diff', '--stat', range]).stdout}\n# Diff\n${git(repo, ['diff', '-U10', range]).stdout}`);
   return { code: 0, file: file.replace(/\\/g, '/') };
 }
 
 if (require.main === module) {
-  const a = process.argv.slice(2), i = a.indexOf('--repo'), repo = i >= 0 ? a.splice(i, 2)[1] : process.cwd();
-  if (a.length !== 4) { console.error('usage: node review_package.js <job dir> <name> <base> <head> [--repo <dir>]'); process.exit(2); }
-  const r = reviewPackage(a[0], a[1], a[2], a[3], repo);
+  const a = process.argv.slice(2), take = k => { const i = a.indexOf(k); return i >= 0 ? (a.splice(i, 2)[1] || '') : null; };
+  const repo = take('--repo') || process.cwd(), userApproved = take('--user-approved');
+  if (a.length !== 4) { console.error('usage: node review_package.js <job dir> <name> <base> <head> [--repo <dir>] [--user-approved "<the user\'s words>"]'); process.exit(2); }
+  const r = reviewPackage(a[0], a[1], a[2], a[3], repo, { userApproved });
   if (r.error) console.error(r.error); else console.log(r.file);
   process.exit(r.code);
 }

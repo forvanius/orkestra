@@ -2,7 +2,7 @@
 
 A Claude Code plugin that splits a coding job across several agents, has a model from another vendor review each change, and lets a script — not a model — decide whether the change is merged.
 
-[Türkçe](README.tr.md) · MIT · `0.6.0` · test suite passes on Linux, macOS and Windows
+[Türkçe](README.tr.md) · MIT · `0.6.1` · test suite passes on Linux, macOS and Windows
 
 A **conductor** plans and decides. **Writers** each own their own files. A **reviewer from the other vendor** (Codex reviews Claude's work, Claude reviews Codex's) looks for bugs. A small **verifier** runs the tests. An agent's "done" counts only with the commands it ran and their exit codes.
 
@@ -19,7 +19,7 @@ Orkestra is meant for large jobs: building a website, a game, an app or a tool, 
 | Games (2D, 3D, web and Godot) | In use; measured (table below) |
 | Websites | In use; measured on a shop site |
 | Apps and tools | In use; not measured yet |
-| Video editing | Being tried; no published results yet |
+| Video editing | In use; one measured job (a teaser from storyboards) |
 
 ## Evidence so far
 
@@ -32,12 +32,13 @@ The figures below come from the author's own projects (anonymized; full log in [
 | Same game: 13 3D models (GLB) | 2 Codex writers in parallel, separate files | No merge conflicts |
 | Same game: effects and enemy redesign | 5 Codex writes, 1 review, 1 smoke run | Review found 2 bugs, the smoke run 2 more |
 | Static shop site, unrelated project | 2 small fixes, as a test of the merge gate | Found that the site's `node --test` ran no tests while reporting "12 passed"; no wrong refusals by Orkestra |
+| Animated series: 9:16 teaser from approved storyboards | Codex chose shots, crops and titles; a Claude worker wrote the ffmpeg pipeline | 22.6 s teaser; Codex reviews found 9 real bugs in the pipeline; the designer's check caught 3 look errors from Codex |
 | 12 days of normal use | 46 sessions | 673 Codex calls, 144 worker runs, 91 verifier runs |
 
 Not shown yet:
 - Use by other people or on other people's code.
 - Total cost including Codex: the 15× figure counts Claude tokens only.
-- Apps and video editing: no measured results yet.
+- Apps: no measured results yet. Video: one job so far.
 - Large teams or many contributors on one repo.
 
 ## Who it is for
@@ -152,7 +153,7 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 
 ## Status
 
-`0.6.0`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
+`0.6.1`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
 
 ## Possible next steps
 

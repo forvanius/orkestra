@@ -7,8 +7,13 @@
 // report that is not there.
 //
 //   node take_report.js <job dir> <name> [--from <the agent's working tree>]
+//   node take_report.js <job dir> <name> --file <final message saved as UTF-8>   (or --stdin from bash)
 //
 // <name> is the file name without .md: report-A, verify-A, ...
+// --stdin is for an agent whose own write was refused (a harness rule, a sandbox): it put the whole report
+// in its final message, which is already in the conductor's context, so saving it costs nothing extra. The
+// conductor pipes that message in VERBATIM; the file is marked as saved from the final message. Writing a
+// summary instead is still forbidden: a too-short text is refused.
 // Prints {ok, report} or {ok:false, errors}. Exit: 0 = the report is in the job folder, 1 = no report
 // where the agent was told to write it, 2 = bad input.
 const fs = require('fs'), path = require('path');
@@ -35,11 +40,26 @@ function takeReport(jobDir, name, from = null) {
 }
 
 if (require.main === module) {
-  const a = process.argv.slice(2), i = a.indexOf('--from'), from = i >= 0 ? (a.splice(i, 2)[1] || '') : null;
-  if (a.length !== 2) { console.error('usage: node take_report.js <job dir> <name> [--from <agent working tree>]'); process.exit(2); }
-  const r = takeReport(a[0], a[1], from);
+  const a = process.argv.slice(2), s = a.indexOf('--stdin'), stdin = s >= 0 && a.splice(s, 1).length > 0;
+  const take = k => { const i = a.indexOf(k); return i >= 0 ? (a.splice(i, 2)[1] || '') : null; };
+  const from = take('--from'), file = take('--file');   // --file: the message saved as UTF-8 (a PowerShell 5.1 pipe mangles non-ASCII)
+  if (a.length !== 2 || [stdin || null, from, file].filter(x => x !== null).length > 1 || file === '') { console.error('usage: node take_report.js <job dir> <name> [--from <agent working tree> | --file <final message, UTF-8> | --stdin < final-message]'); process.exit(2); }
+  const r = stdin || file ? saveFinalMessage(a[0], a[1], fs.readFileSync(file || 0, 'utf8')) : takeReport(a[0], a[1], from);
   console.log(JSON.stringify(r.out));
   process.exit(r.code);
 }
 
-module.exports = { takeReport };
+function saveFinalMessage(jobDir, name, text) {
+  name = String(name || '').replace(/\.md$/i, '');
+  if (!/^[\w.-]+$/.test(name)) return { code: 2, out: { ok: false, errors: [`bad report name: ${name}`] } };
+  if (!jobDir || !fs.existsSync(jobDir)) return { code: 2, out: { ok: false, errors: [`job folder not found: ${jobDir}`] } };
+  const body = String(text || '').trim();
+  // A report carries the contract (VERDICT + JSON); a few lines without it are a summary, not the report.
+  if (body.length < 200 || !/^VERDICT:\s*(APPROVE|REVISE)\s*$/m.test(body)) return { code: 1, out: { ok: false, errors: ['this is not the agent\'s full final message (no VERDICT line, or under 200 characters): paste the message as it came, or ask the agent for it again'] } };
+  const target = path.join(jobDir, name + '.md');
+  if (fs.existsSync(target)) return { code: 1, out: { ok: false, errors: [`${name}.md already exists in the job folder: a new round gets a new name (${name}-2)`] } };
+  fs.writeFileSync(target, `<!-- saved by the conductor from the agent's final message; the agent's own write was refused -->\n${body}\n`);
+  return { code: 0, out: { ok: true, report: target.replace(/\\/g, '/'), from_message: true } };
+}
+
+module.exports = { takeReport, saveFinalMessage };

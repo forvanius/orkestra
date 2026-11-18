@@ -41,6 +41,21 @@ function load(file) {
 }
 
 const content = e => (e.message && Array.isArray(e.message.content)) ? e.message.content : [];
+
+// A subagent resumed by the conductor (SendMessage) keeps one transcript: each new prompt starts a new run.
+// The time limit is per run, so the longest run counts, not first-to-last across all of them.
+function runsOf(entries) {
+  const runs = []; let cur = null;
+  for (const e of entries) {
+    if (!e.timestamp) continue;
+    // A prompt from the conductor, not a system reminder the harness injects mid-run.
+    const text = typeof (e.message || {}).content === 'string' ? e.message.content : content(e).filter(c => c.type === 'text').map(c => c.text || '').join('');
+    const prompt = e.type === 'user' && !e.isMeta && !content(e).some(c => c.type === 'tool_result') && text.trim() !== '' && !/^\s*<system-reminder>/.test(text);
+    if (!cur || (prompt && cur.n)) { cur = { first: e.timestamp, last: e.timestamp, n: 0 }; runs.push(cur); }
+    cur.last = e.timestamp; cur.n++;
+  }
+  return runs;
+}
 const textOf = c => typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => x.text || '').join('\n') : '';
 
 function index(entries) {
@@ -225,6 +240,9 @@ function audit(proj, ids, opts = {}) {
     const end = isBg(u) ? (done[u.id] || {}).ts : (r || {}).ts;
     c.minutes = end ? +mins(u.ts, end).toFixed(1) : null;
     c.tokens = codexTokens(r && r.text);
+    // Returned at once with no token line: the run was detached or its output went to a file, so this
+    // transcript can't time it. Say so instead of reporting 0 (the Codex files' totals still count it).
+    if (c.minutes != null && c.minutes < 0.05 && c.tokens == null) { c.minutes = null; c.untimed = true; }
     c.background = isBg(u);
     facts.codex.push(c);
     if (!/guarded\.js/.test(cmd)) unguarded++;
@@ -298,7 +316,7 @@ function audit(proj, ids, opts = {}) {
       let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(sd, f.replace('.jsonl', '.meta.json')), 'utf8')); } catch {}
       const r = sum(path.join(sd, f), seenUsage); if (!r.n) continue;
       // Subagents run the smoke tests and wait on jobs too: their commands count for CPU and polling.
-      const subIdx = index(load(path.join(sd, f))), subFiles = bgFiles(subIdx);
+      const subEntries = load(path.join(sd, f)), subIdx = index(subEntries), subFiles = bgFiles(subIdx);
       for (const u of subIdx.uses) {
         if (seenUse.has(u.id)) continue; seenUse.add(u.id);
         if (u.name !== 'Bash' && u.name !== 'PowerShell') continue;
@@ -306,10 +324,12 @@ function audit(proj, ids, opts = {}) {
         const subCmd = String(u.input.command || '');
         if (CODEX_CALL.test(subCmd)) noteCodex(u, subCmd, subIdx.results, subIdx.done);
       }
-      subCr += r.cr; if (r.first && r.last) subIntervals.push([r.first, r.last]);
+      subCr += r.cr;   // parallelism counts each run, not the idle time between a run and its resumption
+      for (const x of runsOf(subEntries)) subIntervals.push([x.first, x.last]);
       const model = Object.keys(r.models).sort((a, b) => r.models[b] - r.models[a])[0];
       const desc = meta.description || f, type = meta.agentType || meta.subagent_type || agentTypes[desc] || '?';
-      const sub = { description: desc, type, model, calls: r.n, readsM: +(r.cr / 1e6).toFixed(2), minutes: r.first ? +mins(r.first, r.last).toFixed(1) : 0 };
+      const runs = runsOf(subEntries), longest = runs.reduce((a, x) => Math.max(a, mins(x.first, x.last)), 0);
+      const sub = { description: desc, type, model, calls: r.n, readsM: +(r.cr / 1e6).toFixed(2), minutes: r.first ? +mins(r.first, r.last).toFixed(1) : 0, runs: runs.length, longestRun: +longest.toFixed(1) };
       facts.subagents.push(sub);
       // A model chosen on the Agent call is a lane decision, not a routing error. Agents that ship
       // their own model (design reviewers and the like) are not orkestra's to route.
@@ -317,7 +337,7 @@ function audit(proj, ids, opts = {}) {
       if (/opus/i.test(model) && ours && !chosen) add('FAIL', 'subagent-model', `subagent "${desc}" ran on ${model} (strongest model as subagent)`);
       if (!chosen && /verifier|dogrulayici/i.test(type) && !/haiku/i.test(model)) add('WARN', 'subagent-model', `verifier "${desc}" ran on ${model}, expected Haiku`);
       if (!chosen && (isReviewer || isAdvisor || isLead || /worker|isci|designer|researcher/i.test(type)) && !/sonnet/i.test(model)) add('WARN', 'subagent-model', `${isReviewer ? 'reviewer' : isAdvisor ? 'advisor' : isLead ? 'section lead' : /designer/i.test(type) ? 'designer' : /researcher/i.test(type) ? 'researcher' : 'worker'} "${desc}" ran on ${model}, expected Sonnet`);
-      if (sub.minutes > 25 && /worker|isci/i.test(type)) add('WARN', 'time-limit', `worker "${desc}" ran ${sub.minutes} min (limit ~25)`);
+      if (sub.longestRun > 25 && /worker|isci/i.test(type)) add('WARN', 'time-limit', `worker "${desc}" ran ${sub.longestRun} min in one go (limit ~25)`);
     }
   }
 
@@ -374,12 +394,13 @@ function render({ facts: f, findings }) {
   const L = [];
   L.push(`# Orkestra run audit`, ``, `Sessions: ${f.sessions.join(', ')} · wall clock ${f.wallMinutes} min`, ``);
   L.push(`## Conductor`, `- reads ${f.conductor.readsM} M (${f.conductor.sharePct}% of Claude reads) · max context ${f.conductor.maxContextK} K, grown ${f.conductor.maxGrowthK} K · effort ${JSON.stringify(f.conductor.efforts)} · images opened ${f.conductor.imagesOpened} · shell reads ${f.conductor.shellReads}/${f.conductor.shellCalls}`, ``);
-  L.push(`## Codex (${f.codex.length} calls, ${f.codexTokens} tokens visible in Claude transcripts)`);
+  const untimed = f.codex.filter(c => c.untimed).length;
+  L.push(`## Codex (${f.codex.length} calls, ${f.codexTokens} tokens visible in Claude transcripts${untimed ? `; ${untimed} not timed here (detached or output to a file), see Codex's own files below` : ''})`);
   const x = f.codexRollouts;
   if (x) L.push(`- Codex's own files, every run on this machine in the window: ${x.runs} runs · ${((x.inputTokens + x.outputTokens) / 1e6).toFixed(2)} M tokens (${((x.cachedTokens) / 1e6).toFixed(2)} M cached input) · models ${JSON.stringify(x.byModel)} · effort ${JSON.stringify(x.byEffort)}${x.quota ? ` · quota used: ${x.quota.windowPct}% of 5 h, ${x.quota.weeklyPct}% of week` : ''}`);
   for (const c of f.codex) L.push(`- ${c.role.padEnd(9)} model=${c.model || '—'} effort=${c.effort || '—'} sandbox=${c.sandbox || '—'}${c.schema ? ' schema' : ''} ${c.minutes != null ? c.minutes + ' min' : '? min'}${c.background ? ' (bg)' : ''}${c.tokens ? ' ' + c.tokens + ' tok' : ''}`);
   L.push(``, `## Claude subagents (max ${f.maxParallelClaude} in parallel; ${f.claudeReviews} Claude reviews)`);
-  for (const s of f.subagents) L.push(`- ${s.description} [${s.type}] ${s.model} · ${s.calls} calls · ${s.readsM} M · ${s.minutes} min`);
+  for (const s of f.subagents) L.push(`- ${s.description} [${s.type}] ${s.model} · ${s.calls} calls · ${s.readsM} M · ${s.minutes} min${s.runs > 1 ? ` in ${s.runs} runs, longest ${s.longestRun}` : ''}`);
   L.push(``, `## Process`, `- plan consults: Codex ${f.consults.codex}, Claude ${f.consults.claude}${f.consults.skipped ? ' (skipped with a reason)' : ''} · section leads ${f.sectionLeads} · unguarded Codex runs ${f.unguarded} · reviews ${f.reviews} · gated ${f.gates} · REVISE via gate ${f.revisesGated} · board writes ${f.boardWrites} · board checks ${f.boardChecks} · design note ${f.designNote ? 'yes' : 'no'} · log polls ${f.polls} · smoke runs ${f.heavyRuns} (normal priority ${f.heavyNormal})`, ``);
   L.push(`## Findings`);
   if (!findings.length) L.push('- none');
@@ -405,4 +426,4 @@ if (require.main === module) {
   process.exit(out.findings.some(x => x.level === 'FAIL') ? 1 : 0);
 }
 
-module.exports = { isPoll, isHeavy, isShellRead, withBgOutput, parseCodex, codexTokens, codexRollouts, maxOverlap, audit, render, expectedCodexModel, CODEX_CALL, SECRET };
+module.exports = { runsOf, isPoll, isHeavy, isShellRead, withBgOutput, parseCodex, codexTokens, codexRollouts, maxOverlap, audit, render, expectedCodexModel, CODEX_CALL, SECRET };

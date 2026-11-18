@@ -2,7 +2,7 @@
 
 İşi birkaç ajana bölen, her değişikliği başka bir firmanın modeline inceleten ve değişikliğin birleşip birleşmeyeceğine bir modelin değil bir betiğin karar verdiği bir Claude Code eklentisi.
 
-[English](README.md) · MIT · `0.6.0` · test takımı Linux, macOS ve Windows'ta geçiyor
+[English](README.md) · MIT · `0.6.1` · test takımı Linux, macOS ve Windows'ta geçiyor
 
 Bir **şef** planlar ve karar verir. **Yazıcıların** her biri kendi dosyalarının sahibidir. **Diğer firmadan bir inceleyici** (Claude'un işini Codex, Codex'in işini Claude) hata arar. Küçük bir **doğrulayıcı** testleri çalıştırır. Bir ajanın "bitti"si, ancak çalıştırdığı komutlar ve çıkış kodlarıyla birlikte sayılır.
 
@@ -19,7 +19,7 @@ Orkestra büyük işler içindir: bir site, oyun, uygulama ya da araç yapmak, v
 | Oyunlar (2D, 3D, web ve Godot) | Kullanılıyor; ölçüldü (aşağıdaki tablo) |
 | Siteler | Kullanılıyor; bir mağaza sitesinde ölçüldü |
 | Uygulamalar ve araçlar | Kullanılıyor; henüz ölçülmedi |
-| Video düzenleme | Deneniyor; henüz yayımlanmış sonuç yok |
+| Video düzenleme | Kullanılıyor; ölçülmüş bir iş (storyboard'dan fragman) |
 
 ## Şimdiye kadarki kanıtlar
 
@@ -32,12 +32,13 @@ Aşağıdaki rakamlar yazarın kendi projelerinden (anonim; tam kayıt [docs/mea
 | Aynı oyun: 13 adet 3D model (GLB) | Ayrı dosyalarda 2 paralel Codex yazıcı | Birleştirme çakışması yok |
 | Aynı oyun: efektler ve düşman yeniden tasarımı | 5 Codex yazımı, 1 inceleme, 1 duman testi | İnceleme 2, duman testi 2 hata daha buldu |
 | Statik mağaza sitesi, ilgisiz bir proje | Birleştirme kapısını denemek için 2 küçük düzeltme | Sitenin `node --test` komutunun "12 geçti" derken hiç test çalıştırmadığı bulundu; Orkestra hiç yanlış red vermedi |
+| Animasyon dizisi: onaylı storyboard'lardan 9:16 fragman | Planları, kırpmaları ve başlıkları Codex seçti; ffmpeg hattını bir Claude işçisi yazdı | 22,6 sn fragman; Codex incelemeleri hatta 9 gerçek hata buldu; tasarımcı denetimi Codex'in 3 görünüm hatasını yakaladı |
 | 12 günlük olağan kullanım | 46 oturum | 673 Codex çağrısı, 144 işçi ve 91 doğrulayıcı koşusu |
 
 Henüz gösterilmeyenler:
 - Başka kişilerin kullanımı ya da başkalarının kodu.
 - Codex dahil toplam maliyet: 15 kat rakamı yalnızca Claude token'larını sayar.
-- Uygulamalar ve video düzenleme: henüz ölçülmüş sonuç yok.
+- Uygulamalar: henüz ölçülmüş sonuç yok. Video: şimdilik bir iş.
 - Büyük ekipler ya da bir repoda çok sayıda katkıcı.
 
 ## Kimin için
@@ -152,7 +153,7 @@ Panoda bir parçanın kanıtı şöyle görünür:
 
 ## Durum
 
-`0.6.0`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
+`0.6.1`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
 
 ## Olası sonraki adımlar
 
