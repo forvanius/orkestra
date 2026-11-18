@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Orkestra review verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "blockers", "polish", "goodhart", "spec", "cannot_verify"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["APPROVE", "REVISE"] },
+    "blockers": {
+      "type": "array",
+      "description": "Real bugs only, each with file:line and why",
+      "items": { "type": "string" }
+    },
+    "polish": {
+      "type": "array",
+      "description": "Cosmetic or optional improvements; never block a merge",
+      "items": { "type": "string" }
+    },
+    "goodhart": {
+      "type": "array",
+      "description": "Traces of gaming the acceptance: deleted/loosened tests, changed thresholds or expected values, swallowed errors, skipped sections",
+      "items": { "type": "string" }
+    },
+    "cannot_verify": {
+      "type": "array",
+      "description": "Requirements that can't be judged from this change alone (they live in untouched code or span parts), and what to check",
+      "items": { "type": "string" }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missing", "extra"],
+      "properties": {
+        "missing": {
+          "type": "array",
+          "description": "TASK/ACCEPTANCE items from the brief that were not done",
+          "items": { "type": "string" }
+        },
+        "extra": {
+          "type": "array",
+          "description": "Unrequested features, options, refactors or files outside the brief",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

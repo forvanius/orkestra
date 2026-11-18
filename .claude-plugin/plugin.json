@@ -1,0 +1,38 @@
+{
+  "name": "orkestra",
+  "displayName": "Orkestra",
+  "version": "0.6.0",
+  "description": "Cost-aware multi-agent orchestration for Claude Code: a conductor plans and decides, each part goes to the right model, the other vendor reviews it, cheap agents verify. Evidence-based verdicts, anti-Goodhart rules, token measurement.",
+  "author": {
+    "name": "forvanius"
+  },
+  "repository": "https://github.com/forvanius/orkestra",
+  "license": "MIT",
+  "keywords": ["orchestration", "multi-agent", "codex", "code-review", "cost", "subagents"],
+  "userConfig": {
+    "codex_model": {
+      "type": "string",
+      "title": "Codex model",
+      "description": "Model passed to `codex exec -m` for writing, reviewing and diagnosis. Use the strongest Codex model your plan allows. Leave empty and the conductor asks once.",
+      "default": ""
+    },
+    "codex_model_light": {
+      "type": "string",
+      "title": "Light Codex model (optional)",
+      "description": "A cheaper Codex model for mechanical parts (docs, config, renames). Leave empty and those parts go to a Haiku worker instead.",
+      "default": ""
+    },
+    "codex_model_design": {
+      "type": "string",
+      "title": "Design Codex model (optional)",
+      "description": "A stronger Codex model for design work: concepts, image generation, and 2D/3D model or asset tuning. Simple visual polish stays on codex_model. Leave empty and design work uses codex_model.",
+      "default": ""
+    },
+    "gemini_model": {
+      "type": "string",
+      "title": "Gemini model (optional)",
+      "description": "Model passed to Google's CLI (`agy --model`, or `gemini -m`) when it writes or reviews. Only needed if you use it. Leave empty to use the CLI's own default.",
+      "default": ""
+    }
+  }
+}

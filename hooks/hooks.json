@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/handoff_guard.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+TASK: <one sentence>
+CONTEXT: <decision / report / evidence paths; the board: <job dir>/board.md>
+FIRST: read AGENTS.md; if this comes from an old report, verify the problem still exists, otherwise don't touch it and report "not present — evidence".
+YOUR FILES: <paths you may change>
+DO NOT TOUCH: <user's uncommitted files, other agents' files>
+RULES: <only what is specific to this job; the board's Global constraints that bind this part>
+INTERFACES: consumes <exact names and signatures from other parts>; produces <what later parts rely on>
+ACCEPTANCE: <machine yes/no: command + expected output, e.g. `npm test -- reader` → 0 failed>
+EFFORT: medium | high — <why; required for high: hard architecture, many files, or failed once on medium>
+FORBIDDEN: deleting or loosening existing tests, changing thresholds or expected values, skipping sections, swallowing errors (try/catch, skip); <job-specific limits>
+VERIFY: <command / capture>; the new test must be red when the fix is reverted — prove it with `node "<skill dir>/red_check.js" --base <BASE> --revert <fix files> -- "<test command>"` (it restores every file itself); never `git checkout --`, `git stash` or `git reset` in a working tree to do it
+HEAVY RUNS: node "<skill dir>/guarded.js" heavy --minutes 25 -- <smoke/browser/engine command>
+TIME LIMIT: 25 min — if exceeded, or the same error fails twice, stop, commit the current state and report
+OUTPUT: details → `.orkestra/<job>/report-<part>.md` inside YOUR OWN working tree (relative to where you run; the one path every agent can write, sandboxed or isolated; this brief asks for that file, so it is the requested report, not optional documentation). If even that write is refused, say so and never claim the file exists. To the conductor ≤10 lines + last line `VERDICT: APPROVE|REVISE` + JSON {verdict, blockers, commits, files, checks: [{cmd, exit}], skipped: [{check, why}]}
+# Codex writer only:
+Do NOT commit and do NOT run <tools the sandbox can't run>; list changed files + lines and the verification command the conductor/verifier will run. A check that fails only because the sandbox can't do it (permissions, network, killing processes, a missing tool) goes under `skipped` with its error, never under blockers: the verifier runs it outside the sandbox.
+# Designer only (references/design.md):
+MODE: concept | spec | visual-check — <approved image count for concept; captures to judge for visual-check>
+CODEX LINE: <the full guarded codex command with resolved paths; "none" for a token change or a one-label fix>
+# Researcher only:
+QUESTIONS: <at most 5, each answerable from a dated source>; result → `.orkestra/<job>/research.md` in your working tree; TIME LIMIT 15 min
+# Verifier at close only (references/close.md):
+SMOKE: <the command from the board's Close section>, once, on the merged HEAD, through HEAVY RUNS
+PRESENT: capture <changed screens or pages> at desktop and mobile width into <job dir>; write <job dir>/present.md with OPEN: <one command or URL> · TRY: <3–5 items from the acceptance list> · UNFINISHED: <skipped checks, open polish, Rulings>
+PREVIEW: <the deploy command AGENTS.md names, or "none">
+

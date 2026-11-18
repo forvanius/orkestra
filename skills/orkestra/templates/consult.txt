@@ -1,0 +1,9 @@
+Read-only: do not change any file. No code has been written yet; you are advising on the plan.
+You have not seen any other advisor's opinion.
+Goal: <one or two sentences>.
+Plan: <path to board.md> (design note and lane matrix).
+Fixed constraints: <what may not change, or "none">.
+Open question: <what the conductor is least sure about, or "none">.
+Look for: risks the plan misses, a simpler approach, a wrong split (parts that overlap or depend on each other), acceptance that wouldn't catch a failure, a part given to the wrong model.
+Open other files only to check a specific claim. Don't praise, rewrite the plan or list things that are merely different.
+Reply in at most 10 lines: numbered points, each `must|should — the point — evidence` (file:line when it is about existing code). If the plan is sound, say so in one line.
