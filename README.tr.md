@@ -1,22 +1,52 @@
 # Orkestra
 
-**Claude Code'da büyük kodlama işlerini tek uzun sohbet yerine bir ekip gibi yürütün — her değişikliği birleşmeden önce ikinci bir yapay zekâ denetlesin.**
+İşi birkaç ajana bölen, her değişikliği başka bir firmanın modeline inceleten ve değişikliğin birleşip birleşmeyeceğine bir modelin değil bir betiğin karar verdiği bir Claude Code eklentisi.
 
-[English](README.md) · MIT · deneysel (`0.6.0`)
+[English](README.md) · MIT · `0.6.0` · test takımı Linux, macOS ve Windows'ta geçiyor
 
-Claude Code'a tek bir görev verirsiniz. Orkestra onu küçük bir ekibe dönüştürür: planlayıp karar veren bir **şef**, her biri kendi dosyalarının sahibi olan **yazıcılar**, hata arayan **başka bir yapay zekâ firmasından bir inceleyici** ve testleri gerçekten çalıştıran ucuz bir **doğrulayıcı**. Hiçbir şey birinin sözüyle birleşmez: her "bitti", onu kanıtlayan komutlarla gelmek zorundadır ve bir değişikliğin girip girmeyeceğine bir model değil, bir betik karar verir.
+Bir **şef** planlar ve karar verir. **Yazıcıların** her biri kendi dosyalarının sahibidir. **Diğer firmadan bir inceleyici** (Claude'un işini Codex, Codex'in işini Claude) hata arar. Küçük bir **doğrulayıcı** testleri çalıştırır. Bir ajanın "bitti"si, ancak çalıştırdığı komutlar ve çıkış kodlarıyla birlikte sayılır.
 
 ```text
 /orkestra:orkestra okuyucuya çevrimdışı önbellek ekle ve testlerle kapsa
 ```
 
+## Ne için
+
+Orkestra büyük işler içindir: bir site, oyun, uygulama ya da araç yapmak, video düzenlemek; çok sayıda dosyaya, adıma ya da oturuma yayılan her iş. Bu tür işlerde verim sağlar: her parçayı onu bitirebilecek en ucuz modele verir, şefi her şeyi yeniden okumaktan alıkoyar ve hataları birleşmeden önce yakalar. Bu alanların her birinde gerçek işlerde kullanılarak geliştirilir; denendiği her alan ona yeni testler ve kurallar ekler.
+
+| Alan | Durum |
+|---|---|
+| Oyunlar (2D, 3D, web ve Godot) | Kullanılıyor; ölçüldü (aşağıdaki tablo) |
+| Siteler | Kullanılıyor; bir mağaza sitesinde ölçüldü |
+| Uygulamalar ve araçlar | Kullanılıyor; henüz ölçülmedi |
+| Video düzenleme | Deneniyor; henüz yayımlanmış sonuç yok |
+
+## Şimdiye kadarki kanıtlar
+
+Aşağıdaki rakamlar yazarın kendi projelerinden (anonim; tam kayıt [docs/measurements.md](docs/measurements.md)). Bunlar tek bir kişinin projeleri, bir kıyaslama testi değil.
+
+| İş | Düzen | Ölçülen sonuç |
+|---|---|---|
+| Godot oyunu, büyük bir iş grubu | Aynı ölçekte iş, Orkestra'dan önce ve sonra | Claude önbellek okuması 355 M → 23,7 M (yaklaşık 15 kat az); Codex incelemeleri 13 turun 9'unda gerçek hata buldu |
+| Web oyunu: stil rehberi, konsept kareler, arayüz, uygulama | Codex yazdı ve çizdi, 3 bağımsız inceleme | Birleşmeden önce 2 gerçek hata bulundu |
+| Aynı oyun: 13 adet 3D model (GLB) | Ayrı dosyalarda 2 paralel Codex yazıcı | Birleştirme çakışması yok |
+| Aynı oyun: efektler ve düşman yeniden tasarımı | 5 Codex yazımı, 1 inceleme, 1 duman testi | İnceleme 2, duman testi 2 hata daha buldu |
+| Statik mağaza sitesi, ilgisiz bir proje | Birleştirme kapısını denemek için 2 küçük düzeltme | Sitenin `node --test` komutunun "12 geçti" derken hiç test çalıştırmadığı bulundu; Orkestra hiç yanlış red vermedi |
+| 12 günlük olağan kullanım | 46 oturum | 673 Codex çağrısı, 144 işçi ve 91 doğrulayıcı koşusu |
+
+Henüz gösterilmeyenler:
+- Başka kişilerin kullanımı ya da başkalarının kodu.
+- Codex dahil toplam maliyet: 15 kat rakamı yalnızca Claude token'larını sayar.
+- Uygulamalar ve video düzenleme: henüz ölçülmüş sonuç yok.
+- Büyük ekipler ya da bir repoda çok sayıda katkıcı.
+
 ## Kimin için
 
-- **Claude Code** kullanıyorsunuz ve işleriniz büyüyor: birkaç dosya, birkaç adım, tek oturumu aşan işler.
-- Claude'un yazdığını **başka bir firmanın modeli** (varsayılan olarak OpenAI Codex), Codex'in yazdığını da Claude incelesin istiyorsunuz.
-- Maliyeti önemsiyorsunuz. Uzun işlerde en pahalı şey, şefin gördüğü her şeyi tekrar tekrar okumasıdır; Orkestra şefi okuma ve yazmanın dışında tutar.
+- **Claude Code** kullanıyorsunuz ve işleriniz birkaç dosyaya, birkaç adıma ya da birkaç oturuma yayılıyor.
+- Claude'un yazdığını **başka bir firmanın modeli** (varsayılan olarak OpenAI Codex) incelesin istiyorsunuz, tersi de.
+- Bir işin ajan ve model başına maliyetini görmek istiyorsunuz.
 
-**Uygun değil:** tek dosyalık bir düzeltme ya da ~150 satırın altındaki bir değişiklik. Orkestra bunu kendisi söyler ve bu işleri doğrudan yapar.
+~150 satırın altındaki tek dosyalık bir değişiklikte ekip ek yük getirir; Orkestra bunu fark eder ve değişikliği doğrudan yapar.
 
 ## Bir iş nasıl akar
 
@@ -74,23 +104,23 @@ Gerekenler: [Claude Code](https://code.claude.com), Node.js, git. Windows'ta gel
 
 ## Sonunda elinizde ne olur
 
-- Dalınızda **birleşmiş commit'ler**: her parça diğer firmaca incelenmiş ve bir test koşusuyla doğrulanmış.
-- Her parçayı, kimin yazdığını, incelemesini ve kanıtını kaydeden **bir pano** — iş birden çok oturuma yayılırsa devir notu da odur.
-- Açıp çalıştırabileceğiniz her şey için **kısa bir rapor**: nasıl açılır, neyi denemeli, ne bitmedi; masaüstü ve mobil ekran görüntüleriyle.
-- **Bir maliyet tablosu**: ajan ve model başına çağrı ve token okuması, bir önceki koşunuzla karşılaştırmalı.
+- Dalınızda birleşmiş commit'ler; her parça diğer firmaca incelenmiş ve bir test koşusuyla denetlenmiş.
+- Her parçayı, yazıcısını, incelemesini ve kanıtını kaydeden bir pano; yeni bir oturum devam etmek için onu kullanır.
+- Açıp çalıştırabileceğiniz bir şeyi değiştiren işlerde: nasıl açılacağı, neyin deneneceği ve neyin bitmediğine dair kısa bir not, masaüstü ve mobil görüntülerle.
+- Bir maliyet tablosu: ajan ve model başına çağrı ve token okuması, bir önceki koşunuzla karşılaştırmalı.
 
 Panoda bir parçanın kanıtı şöyle görünür:
 ```text
 | A | codex | merged | src/reader.js, tests/reader.test.js | npm test -- reader | 3f9c2a1 | review=review-A.json |
 ```
 
-## Bir "bitti"ye neden güvenebilirsiniz
+## Değişiklikler nasıl denetlenir
 
-- **Rapor değil kanıt.** Her ajan bir kararla birlikte çalıştırdığı komutları ve çıkış kodlarını döner. Kanıtsız bir onay ret sayılır.
-- **Kale direkleri yerinde kalır.** Her brif testleri silmeyi ya da gevşetmeyi, eşik değiştirmeyi, hata yutmayı yasaklar; inceleyici diff'te tam olarak bunlara bakar.
-- **Testin hatayı yakaladığının kanıtı.** `red_check.js` yeni testi düzeltmeyle (geçmeli) ve düzeltme olmadan (kalmalı) çalıştırır, sonra dosyalarınızı aynen geri koyar.
-- **Commit'e bağlı inceleme.** İncelemeden sonra eklenen bir commit onun onayıyla giremez.
-- **Çalışmanız güvende.** Çalışma ağacınızda yıkıcı git komutu yok; siz kendi merge'ünüzün ya da cherry-pick'inizin ortasındayken birleştirme çalışmayı reddeder.
+- Her ajan, çalıştırdığı komutlar ve çıkış kodlarıyla birlikte bir karar döner; bunlar olmadan verilen onay ret sayılır.
+- Her brif testleri silmeyi ya da gevşetmeyi, eşik değiştirmeyi ve hata yutmayı yasaklar; inceleyici diff'te bunlara bakar.
+- `red_check.js` yeni bir testi düzeltmeyle (geçmeli) ve düzeltme olmadan (kalmalı) çalıştırır, sonra dosyaları olduğu gibi geri koyar.
+- Bir inceleme belirli commit'leri kapsar; sonradan eklenen bir commit kendi incelemesini ister.
+- Orkestra çalışma ağacınızda yıkıcı git komutu çalıştırmaz ve sizin kendi merge'ünüz ya da cherry-pick'iniz sürerken birleştirme yapmaz.
 
 ## Ayarlar
 
@@ -105,7 +135,7 @@ Panoda bir parçanın kanıtı şöyle görünür:
 
 ## Sık sorulanlar
 
-**Para kazandırır mı?** Bizim koşularımızda aynı ölçekteki iş, tamamen Claude ile yürütülen bir orkestrasyondan yaklaşık **15 kat daha az Claude önbellek okuması** tuttu; Codex incelemeleri 13 turun 9'unda gerçek hata buldu. Bu yalnızca Claude token'larını sayar; Codex kendi planıyla çalışır. Ayrıntı: [docs/measurements.md](docs/measurements.md).
+**Maliyeti ne?** İşe göre değişir. Ölçülen koşularda Claude önbellek okuması, aynı ölçekte tamamen Claude ile kurulan düzene göre yaklaşık 15 kat azaldı; Codex kullanımı OpenAI planınızdandır ve bu rakama dahil değildir. `/orkestra:measure` kendi koşularınızın rakamlarını gösterir.
 
 **Codex limitine takılırsa?** `guarded.js` her çalıştırmadan önce Codex kotanıza bakar. Sınıra yaklaşınca durur ve şef size sorar: beklemek mi, parçayı Claude'a vermek mi.
 
@@ -120,9 +150,17 @@ Panoda bir parçanın kanıtı şöyle görünür:
 - [docs/measurements.md](docs/measurements.md) — kuralların arkasındaki koşular
 - [skills/orkestra/SKILL.md](skills/orkestra/SKILL.md) — şefin kuralları
 
-## Durum ve bilinen sınırlar
+## Durum
 
-`0.6.0`, deneysel. Oyun ve web projelerinde ölçüldü; birleştirme yolu biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. En değerli katkı, kendi koşularınızdan gelen rakamlar.
+`0.6.0`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
+
+## Olası sonraki adımlar
+
+Henüz yapılmadı; yön belli olsun diye yazıldı.
+- Karar defteri: her işin önemli kararlarının işler arasında saklanması, böylece sonraki bir iş onları yeniden açmaz.
+- Tarayıcı ve görsel kontroller: bugün proje bunlara sahipse (örneğin Playwright) ve kabul komutu onları çağırıyorsa çalışırlar; kısa bir kurulum tarifi bunu kolaylaştırabilir.
+
+## Bilinen sınırlar
 
 - `close_part.js` yalnızca `review_package.js` ile paketlenmiş commit'leri birleştirir; elle yazılmış ya da `review-<ad>.json` dışında adlandırılmış bir inceleme reddedilir.
 - `red_check.js`, Windows'ta dışarıdan öldürülen bir testi başarısız bir testten ayıramaz; testi öldüren bir zaman sınırıyla çalıştırmayın.

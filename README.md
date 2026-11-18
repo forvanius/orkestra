@@ -1,22 +1,52 @@
 # Orkestra
 
-**Run big coding jobs in Claude Code as a team instead of one long chat — with a second AI checking every change before it lands.**
+A Claude Code plugin that splits a coding job across several agents, has a model from another vendor review each change, and lets a script — not a model — decide whether the change is merged.
 
-[Türkçe](README.tr.md) · MIT · experimental (`0.6.0`)
+[Türkçe](README.tr.md) · MIT · `0.6.0` · test suite passes on Linux, macOS and Windows
 
-You give Claude Code one task. Orkestra turns it into a small crew: a **conductor** that plans and decides, **writers** that each own their own files, a **reviewer from a different AI vendor** that hunts for bugs, and a cheap **verifier** that actually runs the tests. Nothing is merged on someone's word — every "done" has to come with the commands that prove it, and a script, not a model, decides whether a change may land.
+A **conductor** plans and decides. **Writers** each own their own files. A **reviewer from the other vendor** (Codex reviews Claude's work, Claude reviews Codex's) looks for bugs. A small **verifier** runs the tests. An agent's "done" counts only with the commands it ran and their exit codes.
 
 ```text
 /orkestra:orkestra add offline caching to the reader and cover it with tests
 ```
 
+## What it is for
+
+Orkestra is meant for large jobs: building a website, a game, an app or a tool, editing video, anything that runs across many files, steps or sessions. On such jobs it saves effort by giving each part to the cheapest model that can finish it, by keeping the conductor from re-reading everything, and by catching bugs before they are merged. It is developed by using it on real work in each of these areas; every area it is tried on adds tests and rules to it.
+
+| Area | Status |
+|---|---|
+| Games (2D, 3D, web and Godot) | In use; measured (table below) |
+| Websites | In use; measured on a shop site |
+| Apps and tools | In use; not measured yet |
+| Video editing | Being tried; no published results yet |
+
+## Evidence so far
+
+The figures below come from the author's own projects (anonymized; full log in [docs/measurements.md](docs/measurements.md)). They are one person's projects, not a benchmark.
+
+| Job | Setup | Measured result |
+|---|---|---|
+| Godot game, one large batch of work | Same scale of work before and after Orkestra | Claude cache reads 355 M → 23.7 M (about 15× less); Codex reviews found real bugs in 9 of 13 rounds |
+| Web game: style guide, concept frames, UI, implementation | Codex wrote and drew, 3 independent reviews | 2 real bugs found before merge |
+| Same game: 13 3D models (GLB) | 2 Codex writers in parallel, separate files | No merge conflicts |
+| Same game: effects and enemy redesign | 5 Codex writes, 1 review, 1 smoke run | Review found 2 bugs, the smoke run 2 more |
+| Static shop site, unrelated project | 2 small fixes, as a test of the merge gate | Found that the site's `node --test` ran no tests while reporting "12 passed"; no wrong refusals by Orkestra |
+| 12 days of normal use | 46 sessions | 673 Codex calls, 144 worker runs, 91 verifier runs |
+
+Not shown yet:
+- Use by other people or on other people's code.
+- Total cost including Codex: the 15× figure counts Claude tokens only.
+- Apps and video editing: no measured results yet.
+- Large teams or many contributors on one repo.
+
 ## Who it is for
 
-- You use **Claude Code** and your jobs are getting big: several files, several steps, work that runs past one session.
-- You want **another vendor's model** (OpenAI's Codex by default) to review what Claude writes, and Claude to review what Codex writes.
-- You care what it costs. In long jobs the most expensive thing is the conductor re-reading everything it has seen; Orkestra keeps it out of the reading and writing.
+- You use **Claude Code** and your jobs span several files, several steps or several sessions.
+- You want a model from **another vendor** (OpenAI Codex by default) to review what Claude writes, and the other way round.
+- You want to see what a job cost per agent and model.
 
-**Not for:** a one-file fix or a change under ~150 lines. Orkestra says so itself and does those directly.
+For a one-file change under ~150 lines the crew adds overhead; Orkestra detects that and does the change directly.
 
 ## How a job flows
 
@@ -74,23 +104,23 @@ Requirements: [Claude Code](https://code.claude.com), Node.js, git. Developed an
 
 ## What you get at the end
 
-- **Merged commits** on your branch, each part reviewed by the other vendor and verified by a test run.
-- **A board** that records every part, who wrote it, its review and its evidence — and doubles as the handoff note if the job spans sessions.
-- **A short report** for anything you can open or run: how to open it, what to try, what is unfinished, with desktop and mobile captures.
-- **A cost table**: calls and token reads per agent and model, compared with your previous run.
+- Merged commits on your branch, each part reviewed by the other vendor and checked by a test run.
+- A board that records every part, its writer, its review and its evidence; a new session uses it to continue.
+- For a job that changes something you can open or run: a short note on how to open it, what to try and what is unfinished, with desktop and mobile captures.
+- A cost table: calls and token reads per agent and model, compared with your previous run.
 
 What a part's evidence looks like on the board:
 ```text
 | A | codex | merged | src/reader.js, tests/reader.test.js | npm test -- reader | 3f9c2a1 | review=review-A.json |
 ```
 
-## Why you can trust a "done"
+## How changes are checked
 
-- **Evidence, not reports.** Every agent returns a verdict plus the commands it ran and their exit codes. An approval without evidence counts as a rejection.
-- **No moving the goalposts.** Each brief forbids deleting or loosening tests, changing thresholds or swallowing errors; the reviewer checks the diff for exactly that.
-- **Proof the test catches the bug.** `red_check.js` runs the new test with the fix (must pass) and without it (must fail), then restores your files exactly.
-- **Reviews bound to commits.** A commit added after the review can't ride on its approval.
-- **Your work is safe.** No destructive git in your working tree; the merge refuses to run while you are in the middle of your own merge or cherry-pick.
+- Every agent returns a verdict with the commands it ran and their exit codes; an approval without them counts as a rejection.
+- Each brief forbids deleting or loosening tests, changing thresholds and swallowing errors; the reviewer checks the diff for these.
+- `red_check.js` runs a new test with the fix (it must pass) and without it (it must fail), then restores the files as they were.
+- A review covers specific commits; a commit added after it needs its own review.
+- Orkestra runs no destructive git command in your working tree and won't merge while your own merge or cherry-pick is in progress.
 
 ## Settings
 
@@ -105,7 +135,7 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 
 ## FAQ
 
-**Does it save money?** In our runs the same scale of work cost about **15× fewer Claude cache-read tokens** than an all-Claude orchestration, and Codex reviews found real bugs in 9 of 13 rounds. That counts Claude tokens only; Codex runs on its own plan. Details: [docs/measurements.md](docs/measurements.md).
+**What does it cost?** It depends on the job. In the measured runs, Claude cache reads dropped about 15× against an all-Claude setup of the same scale; Codex usage is on your OpenAI plan and is not in that figure. `/orkestra:measure` shows the numbers for your own runs.
 
 **What if Codex hits its limit?** `guarded.js` checks your Codex quota before every run. Near the limit it stops and the conductor asks you: wait, or route the part to Claude.
 
@@ -120,9 +150,17 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 - [docs/measurements.md](docs/measurements.md) — the runs behind the rules
 - [skills/orkestra/SKILL.md](skills/orkestra/SKILL.md) — the conductor's rules
 
-## Status and known limits
+## Status
 
-`0.6.0`, experimental. Measured on game and web projects; the merge path ran in five pilot jobs, one of them on an unrelated project. Numbers from your runs are the most useful contribution.
+`0.6.0`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
+
+## Possible next steps
+
+Not built yet; listed so the direction is clear.
+- A decision log: key decisions of each job kept across jobs, so a later job doesn't reopen them.
+- Browser and visual checks: today they run if the project has them (for example Playwright) and the acceptance command calls them; a short setup recipe could make that easier.
+
+## Known limits
 
 - `close_part.js` merges only commits packaged by `review_package.js`; a review written by hand, or named other than `review-<name>.json`, is refused.
 - `red_check.js` can't tell a test killed from outside on Windows from a failing one; don't run it under a timeout that kills the test.
