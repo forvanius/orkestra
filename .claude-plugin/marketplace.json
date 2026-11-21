@@ -7,6 +7,7 @@
   "plugins": [
     {
       "name": "orkestra",
+      "version": "0.6.3",
       "source": "./",
       "description": "Conductor + per-part model routing + other-vendor review + cheap verifier, with evidence-based verdicts and token measurement"
     }

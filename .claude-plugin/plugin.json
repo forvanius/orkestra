@@ -1,7 +1,7 @@
 {
   "name": "orkestra",
   "displayName": "Orkestra",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "Cost-aware multi-agent orchestration for Claude Code: a conductor plans and decides, each part goes to the right model, the other vendor reviews it, cheap agents verify. Evidence-based verdicts, anti-Goodhart rules, token measurement.",
   "author": {
     "name": "forvanius"
@@ -13,7 +13,7 @@
     "codex_model": {
       "type": "string",
       "title": "Codex model",
-      "description": "Model passed to `codex exec -m` for writing, reviewing and diagnosis. Use the strongest Codex model your plan allows. Leave empty and the conductor asks once.",
+      "description": "Default Codex model for writing, review and diagnosis. Use a Sol model. Leave empty and the conductor asks once.",
       "default": ""
     },
     "codex_model_light": {
@@ -26,6 +26,12 @@
       "type": "string",
       "title": "Design Codex model (optional)",
       "description": "A stronger Codex model for design work: concepts, image generation, and 2D/3D model or asset tuning. Simple visual polish stays on codex_model. Leave empty and design work uses codex_model.",
+      "default": ""
+    },
+    "claude_window_reads_m": {
+      "type": "string",
+      "title": "Claude 5-hour read limit (M)",
+      "description": "Estimated 5-hour Claude read threshold in millions for guarded.js quota. Leave empty and the Claude estimate never blocks.",
       "default": ""
     },
     "gemini_model": {

@@ -2,7 +2,7 @@
 
 A Claude Code plugin that splits a coding job across several agents, has a model from another vendor review each change, and lets a script — not a model — decide whether the change is merged.
 
-[Türkçe](README.tr.md) · MIT · `0.6.2` · test suite passes on Linux, macOS and Windows
+[Türkçe](README.tr.md) · MIT · `0.6.3` · test suite passes on Linux, macOS and Windows
 
 A **conductor** plans and decides. **Writers** each own their own files. A **reviewer from the other vendor** (Codex reviews Claude's work, Claude reviews Codex's) looks for bugs. A small **verifier** runs the tests. An agent's "done" counts only with the commands it ran and their exit codes.
 
@@ -147,7 +147,9 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 
 ## Status
 
-`0.6.2`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
+`0.6.3`. Codex writes by default, Sonnet workers handle local debugging and hard multi-file changes, and Haiku runs short checks. Background batches report once. You give direction, approve decisions and get a short note for the agreed real-world test. At checkpoints, `usage_sum.js --here --budget <board>` compares Claude reads, conductor reads and elapsed time with the plan. `guarded.js quota` estimates Claude's five-hour usage.
+
+In use on the author's projects since October 2026. The merge gate (reviews bound to commits, two reviews for high-risk parts, the red check) has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
 
 ## Possible next steps
 

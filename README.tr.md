@@ -2,7 +2,7 @@
 
 İşi birkaç ajana bölen, her değişikliği başka bir firmanın modeline inceleten ve değişikliğin birleşip birleşmeyeceğine bir modelin değil bir betiğin karar verdiği bir Claude Code eklentisi.
 
-[English](README.md) · MIT · `0.6.2` · test takımı Linux, macOS ve Windows'ta geçiyor
+[English](README.md) · MIT · `0.6.3` · test takımı Linux, macOS ve Windows'ta geçiyor
 
 Bir **şef** planlar ve karar verir. **Yazıcıların** her biri kendi dosyalarının sahibidir. **Diğer firmadan bir inceleyici** (Claude'un işini Codex, Codex'in işini Claude) hata arar. Küçük bir **doğrulayıcı** testleri çalıştırır. Bir ajanın "bitti"si, ancak çalıştırdığı komutlar ve çıkış kodlarıyla birlikte sayılır.
 
@@ -147,7 +147,9 @@ Panoda bir parçanın kanıtı şöyle görünür:
 
 ## Durum
 
-`0.6.2`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
+`0.6.3`. Varsayılan yazıcı Codex. Sonnet yerel hata ayıklamayı ve zor çok dosyalı değişiklikleri, Haiku kısa kontrolleri üstlenir. Arka plandaki işler tamamlanınca tek bildirim gelir. Yönü siz belirlersiniz, kararları onaylarsınız ve kararlaştırılan gerçek kullanım testi için kısa bir deneme notu alırsınız. Kontrol noktalarında `usage_sum.js --here --budget <pano>` Claude ve şefin okumalarını ve geçen süreyi planla karşılaştırır. `guarded.js quota` Claude'un beş saatlik kullanımını tahmin eder.
+
+Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısı (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
 
 ## Olası sonraki adımlar
 

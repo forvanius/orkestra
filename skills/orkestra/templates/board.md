@@ -17,6 +17,13 @@ A new session reads this file first, then only the reports of open parts.
 ## Global constraints (exact values that bind every part)
 -
 
+## Budget
+- Estimate: claude_reads=<N>M conductor=<N>M time=<N>h
+
+## Real-world test
+- Where/how:
+- Try-note:
+
 ## Review focus (failures the plan's tests don't cover but a user would hit, most likely first)
 -
 
@@ -25,7 +32,7 @@ A new session reads this file first, then only the reports of open parts.
 |---|---|---|---|---|---|---|---|---|
 | A |  |  |  |  |  |  |  |  |
 
-Domain is code, design, debug, docs, data or research; design parts go to `orkestra:designer` (concept / spec / visual-check), research to `orkestra:researcher` (result: `research.md` next to this board). Risk is low, medium or high; Haiku and the light Codex model take low-risk parts only.
+Domain is code, design, debug, docs, data or research; design parts go to `orkestra:designer` (concept / spec / visual-check), research to `orkestra:researcher` (result: `research.txt` next to this board). Risk is low, medium or high; Haiku and the light Codex model take low-risk parts only.
 
 ## Consultation (design note, 3+ parts or critical work — before any brief)
 - Consultation skipped (reason):
@@ -39,7 +46,7 @@ Domain is code, design, debug, docs, data or research; design parts go to `orkes
 |---|---|---|---|---|---|---|
 | A |  | ready |  |  |  |  |
 
-Evidence: verifier result + `review=review-A.json` (the reviewer's result, next to this board). `node close_part.js board.md A --repo <repo> --review review-A.json --commit <sha>` gates the review, cherry-picks, marks A merged and checks it is on HEAD. No code to review → `review=skip: <reason>`, and tell the user.
+Evidence: verifier result + `review=review-A.json` (the reviewer's result, next to this board). `node close_part.js board.md A --repo <repo> --review review-A.json --commit <sha>` gates the review, cherry-picks, marks A merged and checks it is on HEAD. For a no-code part use `node close_part.js board.md A --repo <repo> --no-code "<reason>"` (commit `none`, evidence `review=skip: <reason>`) and tell the user. `next_parts.js board.md` lists parts awaiting a review-round decision under `needs_decision`.
 
 ## Close (only when the job changes something the user opens or runs — otherwise delete this section)
 - Smoke (one command on the merged HEAD, exit 0 = pass):
@@ -55,3 +62,6 @@ Evidence: verifier result + `review=review-A.json` (the reviewer's result, next 
 ## Decisions and open questions
 Decisions made for the user: `Ruling: what — why — cost if wrong`. Reads a decision rests on: `read: file — why`.
 -
+
+## Orkestra notes
+- (lessons for the next version)

@@ -27,6 +27,13 @@ A brief states only what is extra; these hold for every job.
   identity is configured; exit 3 with cause `git-identity` means even that failed.
 - Prove a test is red with `skills/orkestra/red_check.js`, never with `git checkout --`,
   `git stash` or `git reset` in a working tree.
+- Pass a comma-separated file list to `red_check.js --revert`.
+- Claude Code subagents cannot write report-like `.md` files. Use `.txt` reports.
+
+## Run environment
+
+- Use Node (`node`) from the checkout root and run `node --test tests/*.test.js`.
+- On Windows the scripts and tests may use Git Bash. Quote paths with spaces and preserve backslashes.
 
 ## Review paths
 

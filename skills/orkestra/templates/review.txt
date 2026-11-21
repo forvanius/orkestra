@@ -3,7 +3,7 @@ Review this file once; it holds the commits, changed files and full diff: <diff 
 Wanted behaviour: <one or two sentences>.
 Writer's brief: <path to the brief>. Read its TASK and ACCEPTANCE before judging spec.
 Global constraints: <copied from the board>.
-Writer's report: <path>. Treat it as unverified claims, including its reasons for leaving something out; a stated reason never lowers a finding's severity.
+Writer's report: <report-<part>.txt path>. Treat it as unverified claims, including its reasons for leaving something out; a stated reason never lowers a finding's severity.
 Look for: <risks specific to this job; for a final review, the board's Review focus and how the parts fit together>. A blocker is a bug that makes the change behave wrongly in real use — wrong output, a crash, lost or corrupted data, a security hole, an ACCEPTANCE item not met — each with file:line and the input that triggers it. Hardening against inputs the project never produces (hostile ids, exotic Unicode, absurd sizes) is polish, not a blocker; so are cosmetics.
 Acceptance: <ACCEPTANCE from the brief>. The writer's checks are in its report; don't re-run them without a specific doubt.
 Also check: was a test deleted or loosened, did an expected value or threshold change, was an error swallowed (catch/skip), are there files outside the brief → put these under "goodhart".
