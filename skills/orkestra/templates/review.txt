@@ -8,7 +8,7 @@ Look for: <risks specific to this job; for a final review, the board's Review fo
 Acceptance: <ACCEPTANCE from the brief>. The writer's checks are in its report; don't re-run them without a specific doubt.
 Also check: was a test deleted or loosened, did an expected value or threshold change, was an error swallowed (catch/skip), are there files outside the brief → put these under "goodhart".
 Brief compliance, separately from code quality: list every TASK/ACCEPTANCE item that was not done under spec.missing, and every unrequested feature, option, refactor or file under spec.extra. Anything the brief asked for is never spec.extra, nor is harmless boilerplate the change needs (a name or comment line): spec.extra forces REVISE.
-A requirement you can't judge from this change alone (it lives in untouched code or spans parts) goes under cannot_verify, with what to check. Don't widen your search to settle it and don't approve it on trust. Test runs are the verifier's job: "tests not re-run" is never a cannot_verify item.
+A requirement you can't judge from this change alone (it lives in untouched code or spans parts) goes under cannot_verify, with what to check. Don't widen your search to settle it and don't approve it on trust. Test runs are the verifier's job: "tests not re-run" is never a cannot_verify item, and neither is anything you checked and found fine (a confirmation goes nowhere; cannot_verify holds the merge).
 For a re-review (the diff is only the fix): say whether each open blocker is fixed; report new breakage in the fix only, by the same bar — a narrower edge case of the fix is polish.
 You have not seen any other review. Your job is to find bugs, not to approve.
 Reply with ONLY a JSON object matching review-schema.json:
