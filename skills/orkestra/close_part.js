@@ -11,6 +11,11 @@
 //           Each review must pair with the diff-<name>.range.json review_package.js wrote, and the
 //           commits to merge must end at the head it reviewed (else exit 1, verdict UNREVIEWED).
 // --checked what the conductor verified itself when the reviewer listed cannot_verify items.
+// --accept-extra "<reason>"  keep what the reviewer listed under spec.extra (and nothing else forced the
+//           REVISE): written to the evidence as accepted-extra=<reason>; tell the user. Blockers, goodhart,
+//           spec.missing or a REVISE verdict are never accepted this way.
+// Another merged part with a review problem (say, merged by hand) does not hold this close: it is returned
+// as other_parts for the conductor to fix. Its commits must still be on HEAD.
 // --commit  the part's commits, oldest first (default: the part's commit cell). Commits already on
 //           HEAD are left alone. A failed cherry-pick is aborted and the board is not marked merged.
 // --dry-run check the proposed close and report the planned picks without changing the board or repo.
@@ -38,7 +43,7 @@ function saveRow(board, part, build) {
 
 // Check the proposed board text in place of the file; evidence paths still resolve from the board's directory.
 function checkProposedBoard(board, part, text) {
-  return boardCheck(board, part, null, text);
+  return boardCheck(board, part, null, text, part);
 }
 
 const findFile = (board, f) => [path.resolve(f), path.resolve(path.dirname(board), f)].find(x => fs.existsSync(x));
@@ -91,23 +96,26 @@ function checkBinding(board, part, files, shas, repo) {
   return errors.length ? { error: { code: 1, out: { ok: false, part, verdict: 'UNREVIEWED', errors } } } : { shas: merge, chain: chainOf };
 }
 
-function gateReview(board, part, reviews, checked, chain, record, runs = []) {
+function gateReview(board, part, reviews, checked, chain, record, runs = [], acceptExtra = null) {
   const rels = [];
+  let kept = false;
   for (const review of reviews) {
     const file = findFile(board, review);
     if (!file) return { code: 2, out: { ok: false, part, errors: [`review file not found: ${review}`] } };
     const v = extract(fs.readFileSync(file, 'utf8')), r = check(v);
     if (r.errors.length) return { code: 1, out: { ok: false, part, review, verdict: 'REVISE', errors: r.errors } };
-    if (r.final !== 'APPROVE') return { code: 1, out: { ok: false, part, review, verdict: 'REVISE', forced_by: r.forced, blockers: v.blockers, goodhart: v.goodhart, spec: v.spec } };
+    const onlyExtra = r.final !== 'APPROVE' && r.forced.join() === 'spec.extra';
+    if (r.final !== 'APPROVE' && !(onlyExtra && acceptExtra)) return { code: 1, out: { ok: false, part, review, verdict: 'REVISE', forced_by: r.forced, blockers: v.blockers, goodhart: v.goodhart, spec: v.spec, ...(onlyExtra ? { hint: 'only spec.extra forced this: revert the extra, or keep it with --accept-extra "<reason>" and tell the user' } : {}) } };
+    if (onlyExtra) kept = true;
     // Only what the conductor must decide holds the close; "tests not re-run" notes go to the verifier.
     if (r.cannotVerify.length && !checked) return { code: 1, out: { ok: false, part, review, verdict: 'NEEDS_CHECK', cannot_verify: r.cannotVerify } };
     runs.push(...r.verifierRuns);
     rels.push(path.relative(path.dirname(board), file).replace(/\\/g, '/'));
   }
   const rel = rels.join('+'), links = chain.map(f => path.relative(path.dirname(board), f).replace(/\\/g, '/')).join('>');
-  const note = (links ? ` chain=${links}` : '') + (checked ? ` checked=${checked.replace(/\|/g, '/')}` : '');
+  const note = (links ? ` chain=${links}` : '') + (kept ? ` accepted-extra=${acceptExtra.replace(/\|/g, '/')}` : '') + (checked ? ` checked=${checked.replace(/\|/g, '/')}` : '');
   record((t, row) => {
-    const ev = row.evidence.replace(/\s*checked=.*$/, '').replace(/\s*chain=[^\s|]*/, '');   // a rerun replaces the notes, never repeats them
+    const ev = row.evidence.replace(/\s*checked=.*$/, '').replace(/\s*accepted-extra=.*$/, '').replace(/\s*chain=[^\s|]*/, '');   // a rerun replaces the notes, never repeats them
     return [[t.c.evidence, (/(?:review|inceleme)\s*=/i.test(ev) ? ev.replace(/(review|inceleme)\s*=\s*[^\s,;|]+/i, `$1=${rel}`) : `${ev} review=${rel}`.trim()) + note]];
   });
   return null;
@@ -132,7 +140,8 @@ function pickAsAuthors(repo, shas) {
   return { status: 0 };
 }
 
-function closePart(board, part, { repo = process.cwd(), review = null, commits = [], checked = null, dryRun = false } = {}) {
+function closePart(board, part, { repo = process.cwd(), review = null, commits = [], checked = null, dryRun = false, acceptExtra = null } = {}) {
+  if (acceptExtra !== null && !String(acceptExtra).trim()) return { code: 2, out: { ok: false, part, errors: ['--accept-extra needs a reason'] } };
   if (!fs.existsSync(board)) return { code: 2, out: { ok: false, errors: [`board not found: ${board}`] } };
   const text = fs.readFileSync(board, 'utf8'), t = locateTable(text);
   if (!t) return { code: 2, out: { ok: false, errors: ['no parts table (needs part, state and evidence columns)'] } };
@@ -162,10 +171,10 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
   const runs = [];   // reviewers' "tests not re-run" notes: the verifier's runs, reported, never holding the close
   if (reviews.length) {
     const record = dryRun ? build => { proposed = renderRow(text, part, build); } : build => saveRow(board, part, build);
-    const failed = gateReview(board, part, reviews, checked, chain, record, runs);
+    const failed = gateReview(board, part, reviews, checked, chain, record, runs, acceptExtra && String(acceptExtra).trim());
     if (failed) return failed;
   }
-  const gate = dryRun ? checkProposedBoard(board, part, proposed) : boardCheck(board, part);
+  const gate = dryRun ? checkProposedBoard(board, part, proposed) : boardCheck(board, part, null, null, part);
   if (gate.code) return { code: gate.code, out: { ok: false, part, errors: gate.errors } };
 
   const todo = shas.filter(s => onHead(repo, s));
@@ -178,17 +187,17 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
   if (busy) return { code: 2, out: { ok: false, part, errors: [`${busy} exists: a merge, cherry-pick, revert or rebase is in progress in ${repo}; finish or abort it yourself, then rerun`] } };
   // Before touching HEAD: every other merged part must still be on it, or the final check would fail
   // after this part's commits were already picked.
-  const before = boardCheck(board, null, repo);
+  const before = boardCheck(board, null, repo, null, part);
   if (before.code) return { code: before.code, out: { ok: false, part, errors: before.errors } };
   if (dryRun) {
     // The same final check a real run makes, on the board as it would read after the merge: this part
     // marked merged. Its picked commits exist only after the cherry-pick, so HEAD is checked for the
     // other merged rows (the board as it is) and the reviews for all of them (the proposed board).
     const merged = renderRow(proposed, part, (tb) => [[tb.c.state, tb.turkish ? 'birleşti' : 'merged'], [tb.c.commit, shas.join(' ')]]);
-    const onHeadNow = boardCheck(board, null, repo), after = boardCheck(board, null, null, merged);
+    const onHeadNow = boardCheck(board, null, repo, null, part), after = boardCheck(board, null, null, merged, part);
     const errors = [...onHeadNow.errors, ...after.errors];
     if (errors.length) return { code: Math.max(onHeadNow.code, after.code), out: { ok: false, part, errors } };
-    return { code: 0, out: { ok: true, part, commits: shas, picked: todo.length, skipped_reviews: after.skips, would_cherry_pick: todo, ...(runs.length ? { verifier_runs: runs } : {}) } };
+    return { code: 0, out: { ok: true, part, commits: shas, picked: todo.length, skipped_reviews: after.skips, would_cherry_pick: todo, ...(runs.length ? { verifier_runs: runs } : {}), ...(after.others ? { other_parts: after.others } : {}) } };
   }
   let committer = null;
   if (todo.length) {
@@ -219,25 +228,25 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
   const finalShas = shas.map(s => todo.includes(s) ? fresh[todo.indexOf(s)] : s);
   saveRow(board, part, (tb) => [[tb.c.state, tb.turkish ? 'birleşti' : 'merged'], [tb.c.commit, finalShas.join(' ')]]);
 
-  const after = boardCheck(board, null, repo);
+  const after = boardCheck(board, null, repo, null, part);
   if (after.code) return { code: after.code, out: { ok: false, part, errors: after.errors } };
-  return { code: 0, out: { ok: true, part, commits: finalShas, picked: todo.length, skipped_reviews: after.skips, ...(committer ? { committer } : {}), ...(runs.length ? { verifier_runs: runs } : {}) } };
+  return { code: 0, out: { ok: true, part, commits: finalShas, picked: todo.length, skipped_reviews: after.skips, ...(committer ? { committer } : {}), ...(runs.length ? { verifier_runs: runs } : {}), ...(after.others ? { other_parts: after.others } : {}) } };
 }
 
 if (require.main === module) {
   const a = process.argv.slice(2), take = k => { const i = a.indexOf(k); return i >= 0 ? a.splice(i, 2)[1] : null; };
-  const repo = take('--repo') || process.cwd(), checked = take('--checked'), commits = [], review = [];
+  const repo = take('--repo') || process.cwd(), checked = take('--checked'), acceptExtra = take('--accept-extra'), commits = [], review = [];
   for (let c = take('--commit'); c; c = take('--commit')) commits.push(c);
   for (let r = take('--review'); r; r = take('--review')) review.push(r);
   const dryRunIndex = a.indexOf('--dry-run'), dryRun = dryRunIndex >= 0;
   if (dryRun) a.splice(dryRunIndex, 1);
   if (a.length !== 2) {
-    const usage = 'usage: node close_part.js <board.md> <part> --repo <dir> [--review <review-x.json> ...] [--checked "<what you checked>"] [--commit <sha> ...]';
+    const usage = 'usage: node close_part.js <board.md> <part> --repo <dir> [--review <review-x.json> ...] [--checked "<what you checked>"] [--accept-extra "<reason>"] [--commit <sha> ...]';
     if (dryRun) console.log(JSON.stringify({ ok: false, errors: [usage], dry_run: true }));
     else console.error(usage);
     process.exit(2);
   }
-  const r = closePart(a[0], a[1], { repo, review, commits, checked, dryRun });
+  const r = closePart(a[0], a[1], { repo, review, commits, checked, dryRun, acceptExtra });
   console.log(JSON.stringify(dryRun ? { ...r.out, dry_run: true } : r.out));
   process.exit(r.code);
 }

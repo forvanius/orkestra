@@ -117,3 +117,12 @@ test('a supplied board text is checked instead of the file, with evidence read f
   assert.strictEqual(result.code, 0, result.errors.join('\n'));
   assert.strictEqual(fs.readFileSync(b, 'utf8'), before);
 });
+
+test('acceptedExtra reads the reason up to a checked= note, and needs the exact key', () => {
+  const { acceptedExtra } = require('../skills/orkestra/board_check.js');
+  assert.strictEqual(acceptedExtra('review=r.json accepted-extra = kept for a11y  checked=ran it'), 'kept for a11y');
+  assert.strictEqual(acceptedExtra('review=r.json accepted-extra=kept'), 'kept');
+  assert.strictEqual(acceptedExtra('review=r.json accepted-extra=   '), null);
+  assert.strictEqual(acceptedExtra('review=r.json accepted-extrass=kept'), null);
+  assert.strictEqual(acceptedExtra('review=r.json accepted-extra==kept'), null);
+});

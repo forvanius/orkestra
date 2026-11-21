@@ -12,6 +12,8 @@
 // marks high risk needs two passing reviews: `review=a.json+b.json`.
 // A merged row's commit cell must name commits that are really on HEAD of --repo (directly or as a
 // cherry-pick with the same patch): a failed cherry-pick must not leave a part marked merged.
+// A review forced to REVISE by spec.extra alone passes when the evidence holds `accepted-extra=<reason>`
+// (close_part.js --accept-extra writes it); it is printed so the conductor tells the user.
 // Exit: 0 = ok, 1 = a part lacks a passing review or its merged commit is not on HEAD,
 // 2 = no board, no parts table or not a git repo.
 // Turkish boards work too: Parça / durum / kanıt, `birleşti`, `inceleme=`.
@@ -55,6 +57,9 @@ function reviewFiles(row, dir) {
   return value.split('+').filter(Boolean);
 }
 
+// The conductor's recorded reason for keeping what a reviewer listed under spec.extra (nothing else).
+const acceptedExtra = evidence => { const m = evidence.match(/accepted-extra\s*=\s*(?!=)([^|]*?)\s*(?=\bchecked=|$)/i); return m && m[1].trim() ? m[1].trim() : null; };
+
 function reviewOf(row, dir) {
   const m = row.evidence.match(REVIEW_RE);
   if (!m) return { ok: false, why: 'no review= entry in evidence' };
@@ -63,6 +68,8 @@ function reviewOf(row, dir) {
   if (!files.length) return { ok: false, why: 'review= names no file' };
   const link = row.evidence.match(/chain\s*=\s*([^\s,;|]+)/i);   // earlier reviews of a re-review chain: must exist, never counted
   if (link) for (const name of link[1].split('>').filter(Boolean)) if (!fs.existsSync(path.resolve(dir, name))) return { ok: false, why: `chain review file not found: ${name}` };
+  const accepted = acceptedExtra(row.evidence);
+  let extras = 0;
   const seen = new Set();
   for (const name of files) {
     const file = path.resolve(dir, name);
@@ -72,9 +79,10 @@ function reviewOf(row, dir) {
     seen.add(real);
     const r = check(extract(fs.readFileSync(file, 'utf8')));
     if (r.errors.length) return { ok: false, why: `no valid verdict in ${name}: ${r.errors.join('; ')}` };
-    if (r.final !== 'APPROVE') return { ok: false, why: `review ${name} is ${r.final}${r.forced.length ? ' (forced by ' + r.forced.join(', ') + ')' : ''}` };
+    if (r.final !== 'APPROVE' && !(accepted && r.forced.join() === 'spec.extra')) return { ok: false, why: `review ${name} is ${r.final}${r.forced.length ? ' (forced by ' + r.forced.join(', ') + ')' : ''}` };
+    if (r.final !== 'APPROVE') extras++;
   }
-  return { ok: true, count: files.length };
+  return { ok: true, count: files.length, ...(extras ? { accepted } : {}) };
 }
 
 // Risk per part from the lane matrix (the table with part, write surface and risk columns).
@@ -112,24 +120,28 @@ function onHead(repo, cell) {
 
 // text: optional board contents to check instead of the file's (a proposed board); evidence paths
 // still resolve from boardFile's directory.
-function boardCheck(boardFile, mergePart, repo = null, text = null) {
+// focus: the part being closed. A review problem of another merged part is then reported under `others`
+// instead of holding this close (one hand-merged part must not lock every later part); their commits must
+// still be on HEAD. Without focus every merged part is checked in full, as the audit and handoff need.
+function boardCheck(boardFile, mergePart, repo = null, text = null, focus = null) {
   if (text === null && !fs.existsSync(boardFile)) return { code: 2, errors: [`board not found: ${boardFile}`], skips: [] };
   if (text === null) text = fs.readFileSync(boardFile, 'utf8');
   const rows = partsTable(text), risk = risks(text);
   if (!rows) return { code: 2, errors: ['no parts table (needs part, state and evidence columns)'], skips: [] };
-  const errors = [], skips = [];
+  const errors = [], skips = [], others = [];
   if (repo && git(repo, ['rev-parse', '--git-dir']).status !== 0) return { code: 2, errors: [`not a git repo: ${repo} (pass --repo)`], skips: [] };
   if (mergePart && !rows.some(r => r.part === mergePart)) errors.push(`part "${mergePart}" is not on the board`);
   for (const row of rows) {
     if (!MERGED.test(row.state) && row.part !== mergePart) continue;
     const r = reviewOf(row, path.dirname(boardFile));
-    if (!r.ok) errors.push(`part ${row.part}: ${r.why}`);
+    if (!r.ok) (focus && row.part !== focus ? others : errors).push(`part ${row.part}: ${r.why}`);
     // checked when a part merges; parts merged before this rule keep their single review
     else if (row.part === mergePart && HIGH_RISK.test(risk[row.part] || '') && (r.skip || r.count < 2)) errors.push(`part ${row.part} is high risk: it needs two passing reviews (review=a.json+b.json), has ${r.skip ? "a skip" : r.count}`);
     else if (r.skip) skips.push(`part ${row.part}: review skipped — ${r.skip}`);
+    else if (r.accepted) skips.push(`part ${row.part}: reviewer's spec.extra kept — ${r.accepted}`);
     if (repo && MERGED.test(row.state)) { const e = onHead(repo, row.commit); if (e) errors.push(`part ${row.part}: ${e}`); }
   }
-  return { code: errors.length ? 1 : 0, errors, skips };
+  return { code: errors.length ? 1 : 0, errors, skips, ...(others.length ? { others } : {}) };
 }
 
 const KNOWN_STATE = /^(ready|running|in-review|blocked|merged|hazır|hazir|çalışıyor|calisiyor|incelemede|engelli|birleşti|birlesti)$/i;
@@ -162,4 +174,4 @@ if (require.main === module) {
   process.exit(r.code);
 }
 
-module.exports = { partsTable, locateTable, cells, boardCheck, handoffCheck, onHead, git, reviewFiles };
+module.exports = { partsTable, locateTable, cells, boardCheck, handoffCheck, onHead, git, reviewFiles, acceptedExtra };

@@ -134,3 +134,42 @@ test('a summary quoting the verdict mid-sentence is not a report; --file reads U
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(fs.readFileSync(path.join(job, 'report-B.md'), 'utf8'), /Kurgu hattı: kararma, başlık/);
 });
+
+// A fix that adds a helper, and a test whose red comes from a crash, not from a check.
+function crashRepo() {
+  const r = repo();
+  fs.writeFileSync(path.join(r.dir, 'crash.test.js'), "const h = require('./helper.js');\nprocess.exit(h === 2 ? 0 : 1);\n");   // helper.js is new with the fix
+  fs.writeFileSync(path.join(r.dir, 'noisy.test.js'), "console.error('TypeError seen in a log line');\nprocess.exit(require('./lib.js')(1) === 3 ? 0 : 1);\n");
+  fs.writeFileSync(path.join(r.dir, 'assert.test.js'), "const assert = require('assert');\nassert.strictEqual(require('./lib.js')(1), 3, 'lib adds two');\n");
+  r.g('add', '-A'); r.g('commit', '-qm', 'tests');
+  return r;
+}
+
+test('red check: a red run that crashes (missing module, ReferenceError ...) is no proof', () => {
+  const r = crashRepo();
+  const res = redCheck({ repo: r.dir, base: r.base, files: ['helper.js'], cmd: 'node crash.test.js' });
+  assert.strictEqual(res.code, 1, JSON.stringify(res.out));
+  assert.match(res.out.errors[0], /crashed \(Cannot find module/);
+  assert.match(res.out.errors[0], /--expect/);
+  assert.strictEqual(r.g('status', '--porcelain'), '');
+});
+
+test('red check: an assertion failure is proof, and a crash word the green run also prints is not a crash', () => {
+  const r = crashRepo();
+  let res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node assert.test.js' });
+  assert.strictEqual(res.code, 0, JSON.stringify(res.out));
+  res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node noisy.test.js' });
+  assert.strictEqual(res.code, 0, JSON.stringify(res.out));
+});
+
+test('red check: --expect names the failing check; the red run must show it', () => {
+  const r = crashRepo();
+  let res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node assert.test.js', expect: 'lib adds two' });
+  assert.strictEqual(res.code, 0, JSON.stringify(res.out));
+  assert.strictEqual(res.out.expect, 'lib adds two');
+  res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node assert.test.js', expect: 'some other check' });
+  assert.strictEqual(res.code, 1);
+  assert.match(res.out.errors[0], /not with "some other check"/);
+  res = redCheck({ repo: r.dir, base: r.base, files: ['helper.js'], cmd: 'node crash.test.js', expect: 'Cannot find module' });
+  assert.strictEqual(res.code, 0, 'the conductor says this error is the bug: accepted');
+});

@@ -13,6 +13,9 @@
 //           (line endings, filters), so a CRLF project is not red for the wrong reason.
 // Before changing anything it saves the files and a manifest under the repo's git folder; a killed run
 // leaves them there, and the next run refuses until --restore puts them back.
+// The red run must fail a check, not crash: a new ReferenceError, TypeError, missing module and the like
+// (one the green run doesn't show) is refused. --expect "<text>": the red output must contain this text
+// (the failing assertion's message); use it when the bug itself is such an error.
 // Known limit: a test killed from outside on Windows exits like a failing test, so it would read as red;
 // don't run it under a timeout that kills it.
 // Prints {green, red, restored}. Exit: 0 = green with the fix and red without it, 1 = not green with the
@@ -23,9 +26,14 @@ const { git } = require('./board_check.js');
 
 const run = (cmd, cwd) => {
   const r = spawnSync(cmd, { cwd, shell: true, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  const tail = ((r.stdout || '') + (r.stderr || '')).trim().split('\n').slice(-5).join(' / ');
-  return { exit: r.status, signal: r.signal, error: r.error && r.error.message, tail };
+  const out = ((r.stdout || '') + (r.stderr || '')).trim(), tail = out.split('\n').slice(-5).join(' / ');
+  return { exit: r.status, signal: r.signal, error: r.error && r.error.message, tail, out };
 };
+
+// A red run that crashed (the test's own code or harness broke) proves nothing about the bug: it would be red
+// for any reason. Markers that also show in the green run are noise (a logged warning), so only new ones count.
+const CRASH = /\b(?:ReferenceError|TypeError|SyntaxError|RangeError|ERR_MODULE_NOT_FOUND|ModuleNotFoundError|ImportError|NameError|AttributeError|IndentationError)\b|Cannot find module|is not defined\b|is not a function\b|Cannot read propert(?:y|ies) of (?:undefined|null)|Traceback \(most recent call last\)|panicked at/g;
+const crashes = (red, green) => { const seen = new Set(green.match(CRASH) || []); return [...new Set(red.match(CRASH) || [])].filter(m => !seen.has(m)); };
 
 // What a run did to tracked files, so a test that rewrites fixtures is caught instead of trusted: the
 // status lines plus a hash of the tracked diff (a file already modified can change and keep its status).
@@ -49,7 +57,7 @@ function restore(top) {
   return { code: 0, out: { ok: true, restored: saved.length } };
 }
 
-function redCheck({ repo = process.cwd(), base, files, cmd }) {
+function redCheck({ repo = process.cwd(), base, files, cmd, expect = null }) {
   if (!base || !files || !files.length || !cmd) return { code: 2, out: { ok: false, errors: ['need --base, --revert and a test command after --'] } };
   const topR = git(repo, ['rev-parse', '--show-toplevel']);
   if (topR.status !== 0) return { code: 2, out: { ok: false, errors: [`not a git repo: ${repo}`] } };
@@ -105,7 +113,10 @@ function redCheck({ repo = process.cwd(), base, files, cmd }) {
   if (changed) return { code: 1, out: { ok: false, restored: true, errors: [`the test changed tracked files outside --revert (git status differs): check them before trusting either run`] } };
   if (red.exit == null) return { code: 1, out: { ok: false, green: true, restored: true, errors: [`the red run did not finish (${red.signal || red.error}): no proof either way`] } };
   if (red.exit === 0) return { code: 1, out: { ok: false, green: true, red: false, restored: true, errors: ['the test still passes with the fix reverted: it does not catch the bug'] } };
-  return { code: 0, out: { ok: true, green: true, red: true, restored: true, red_exit: red.exit } };
+  if (expect && !red.out.includes(expect)) return { code: 1, out: { ok: false, green: true, red: true, restored: true, red_exit: red.exit, errors: [`the red run failed, but not with "${expect}": it failed for another reason (${red.tail})`] } };
+  const crash = expect ? [] : crashes(red.out, green.out);
+  if (crash.length) return { code: 1, out: { ok: false, green: true, red: true, restored: true, red_exit: red.exit, crash, errors: [`the red run crashed (${crash.join(', ')}) instead of failing a check: no proof the test catches the bug. Fix the test so it fails an assertion, or pass --expect "<the assertion's message>" if this error is the bug itself (${red.tail})`] } };
+  return { code: 0, out: { ok: true, green: true, red: true, restored: true, red_exit: red.exit, ...(expect ? { expect } : {}) } };
 }
 
 if (require.main === module) {
@@ -117,13 +128,13 @@ if (require.main === module) {
   const cmd = words[0] || '';
   const flag = k => { const i = opts.indexOf(k); return i >= 0 ? opts.splice(i, 1) && true : false; };
   const take = k => { const i = opts.indexOf(k); return i >= 0 ? opts.splice(i, 2)[1] : null; };
-  const doRestore = flag('--restore'), repo = take('--repo') || process.cwd(), base = take('--base'), revert = take('--revert');
-  if (opts.length) { console.error('usage: node red_check.js --base <sha> --revert <file>[,<file>...] [--repo <dir>] -- "<test command>"\n       node red_check.js --restore [--repo <dir>]'); process.exit(2); }
+  const doRestore = flag('--restore'), repo = take('--repo') || process.cwd(), base = take('--base'), revert = take('--revert'), expect = take('--expect');
+  if (opts.length) { console.error('usage: node red_check.js --base <sha> --revert <file>[,<file>...] [--repo <dir>] [--expect "<text>"] -- "<test command>"\n       node red_check.js --restore [--repo <dir>]'); process.exit(2); }
   let r;
   if (doRestore) {
     const top = git(repo, ['rev-parse', '--show-toplevel']);
     r = top.status ? { code: 2, out: { ok: false, errors: [`not a git repo: ${repo}`] } } : restore(top.stdout.trim());
-  } else r = redCheck({ repo, base, files: (revert || '').split(',').map(s => s.trim()).filter(Boolean), cmd });
+  } else r = redCheck({ repo, base, files: (revert || '').split(',').map(s => s.trim()).filter(Boolean), cmd, expect });
   console.log(JSON.stringify(r.out));
   process.exit(r.code);
 }

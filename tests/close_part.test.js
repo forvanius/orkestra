@@ -413,3 +413,69 @@ test('a review whose only cannot_verify is "tests not re-run" closes, and passes
   assert.deepStrictEqual(r.out.verifier_runs, [note]);
   assert.strictEqual(s.row().state, 'merged');
 });
+
+const extra = { ...ok, spec: { missing: [], extra: ['aria label not in the brief'] } };
+
+test('a part merged by hand with a failing review does not lock later closes; the audit still flags it', () => {
+  const s = setup();
+  s.save('review-X.json', extra);                                   // forced REVISE, merged by hand anyway
+  fs.appendFileSync(s.board, `| X | codex | merged | x.txt | t | ${s.base.slice(0, 7)} | review=review-X.json |\n`);
+  const r = closePart(s.board, 'A', { repo: s.repo, review: s.save('review-A.json', ok) });
+  assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+  assert.strictEqual(s.row().state, 'merged');
+  assert.match(r.out.other_parts.join('\n'), /part X: review review-X\.json is REVISE \(forced by spec\.extra\)/);
+  const audit = boardCheck(s.board, null, s.repo);                  // no focus: every merged part in full
+  assert.strictEqual(audit.code, 1);
+  assert.match(audit.errors.join('\n'), /part X/);
+});
+
+test('another merged part whose commit is not on HEAD still holds the close', () => {
+  const s = setup();
+  s.g('checkout', '-qb', 'side'); fs.writeFileSync(path.join(s.repo, 'side.txt'), 'x'); s.g('add', '-A'); s.g('commit', '-qm', 'side');
+  const lost = s.g('rev-parse', '--short', 'HEAD'); s.g('checkout', '-q', 'main');
+  s.save('review-X.json', ok);
+  fs.appendFileSync(s.board, `| X | codex | merged | side.txt | t | ${lost} | review=review-X.json |\n`);
+  const r = closePart(s.board, 'A', { repo: s.repo, review: s.save('review-A.json', ok) });
+  assert.strictEqual(r.code, 1);
+  assert.match(r.out.errors.join('\n'), /part X: commit .* is not on HEAD/);
+  assert.strictEqual(s.row().state, 'in-review');
+});
+
+test('--accept-extra keeps a harmless spec.extra with its reason on the board; the audit honours it', () => {
+  const s = setup(), review = s.save('review-A.json', extra);
+  let r = closePart(s.board, 'A', { repo: s.repo, review });
+  assert.strictEqual(r.code, 1);
+  assert.deepStrictEqual(r.out.forced_by, ['spec.extra']);
+  assert.match(r.out.hint, /--accept-extra/);
+  r = closePart(s.board, 'A', { repo: s.repo, review, acceptExtra: 'needed so aria-labelledby resolves | user told' });
+  assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+  assert.strictEqual(s.row().evidence, 'review=review-A.json accepted-extra=needed so aria-labelledby resolves / user told');
+  assert.match(r.out.skipped_reviews.join('\n'), /part A: reviewer's spec\.extra kept — needed so aria-labelledby resolves/);
+  const audit = boardCheck(s.board, null, s.repo);
+  assert.strictEqual(audit.code, 0, JSON.stringify(audit));
+});
+
+test('--accept-extra never accepts blockers, goodhart, spec.missing or a REVISE verdict', () => {
+  for (const bad of [
+    { ...extra, blockers: ['a.txt:1 wrong'] },
+    { ...extra, goodhart: ['test loosened'] },
+    { ...ok, spec: { missing: ['item 3'], extra: ['x'] } },
+    { ...extra, verdict: 'REVISE' },
+  ]) {
+    const s = setup(), before = s.g('rev-parse', 'HEAD');
+    const r = closePart(s.board, 'A', { repo: s.repo, review: s.save('review-A.json', bad), acceptExtra: 'harmless' });
+    assert.strictEqual(r.code, 1, JSON.stringify(bad));
+    assert.strictEqual(r.out.hint, undefined);
+    assert.strictEqual(s.g('rev-parse', 'HEAD'), before);
+  }
+});
+
+test('--accept-extra needs a reason, and an accepted-extra note alone does not pass a review with blockers', () => {
+  const s = setup();
+  assert.strictEqual(closePart(s.board, 'A', { repo: s.repo, review: s.save('review-A.json', extra), acceptExtra: '  ' }).code, 2);
+  s.save('review-X.json', { ...extra, blockers: ['real bug'] });
+  fs.appendFileSync(s.board, `| X | codex | merged | x.txt | t | ${s.base.slice(0, 7)} | review=review-X.json accepted-extra=looked fine |\n`);
+  const audit = boardCheck(s.board, null, s.repo);
+  assert.strictEqual(audit.code, 1);
+  assert.match(audit.errors.join('\n'), /part X: review review-X\.json is REVISE \(forced by blockers, spec\.extra\)/);
+});
