@@ -29,12 +29,10 @@ function workingMode(text) {
 
 function writePaths(surface) {
   const notes = /(`[^`]*`)|\([^()]*\)/g;
-  return surface.replace(notes, (_, quoted) => quoted || '').split(',').map(cell => {
-    const text = cell.trim();
-    const quoted = text.match(/^`([^`]+)`/);
-    // An unquoted path ends at the last word containing a separator or dot.
-    return quoted ? quoted[1] : text.match(/^.*[/\\.]\S*/)?.[0];
-  }).filter(file => file && /[/\\.]/.test(file));
+  const withoutNotes = surface.replace(notes, (_, quoted) => quoted || ' ');
+  const tokens = withoutNotes.matchAll(/`([^`]*)`|([^,;`\s]+)/g);
+  return Array.from(tokens, ([, quoted, unquoted]) => quoted ?? unquoted)
+    .filter(file => /[/\\.]/.test(file));
 }
 
 function laneMatrix(text) {

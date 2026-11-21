@@ -134,6 +134,30 @@ test('write surfaces ignore notes and trailing words, preserving quoted paths an
   assert.deepStrictEqual(r.conflicts, []);
 });
 
+test('write surfaces split on whitespace, semicolons and commas outside backticks', () => {
+  const text = board([
+    ['A', 'yes', 'src/a.js src/b.js'],
+    ['B', 'yes', 'a.js; b.js'],
+    ['C', 'yes', 'a.js (new), b/c.js'],
+    ['D', 'yes', '`dir/with space, and; punctuation.js` `other.js`'],
+  ], []);
+  assert.deepStrictEqual(laneMatrix(text).map(row => row.surface), [
+    ['src/a.js', 'src/b.js'],
+    ['a.js', 'b.js'],
+    ['a.js', 'b/c.js'],
+    ['dir/with space, and; punctuation.js', 'other.js'],
+  ]);
+});
+
+test('parallel parts conflict on a shared path in a space-separated write surface', () => {
+  const r = plan(board([
+    ['A', 'yes', 'src/a.js src/b.js'],
+    ['B', 'yes', 'src/b.js'],
+  ], [['A', 'ready'], ['B', 'ready']]));
+  assert.strictEqual(r.code, 1);
+  assert.deepStrictEqual(r.conflicts, ['A and B both write src/b.js and neither waits for the other']);
+});
+
 test('dispatch holds twice-revised parts for a decision and reports unreadable reviews', t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ork reviews-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
