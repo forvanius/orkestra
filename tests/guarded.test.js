@@ -16,9 +16,15 @@ function fakeHome(primary, secondary) {
   return home;
 }
 
-function cli(args, { home, slotDir, input } = {}) {
+function cli(args, { home = tmp('ork-g-empty-'), slotDir, input, projects, claudeLimit } = {}) {
   const env = { ...process.env };
   if (home) { env.HOME = home; env.USERPROFILE = home; }
+  delete env.CLAUDE_CONFIG_DIR;
+  delete env.CLAUDE_PLUGIN_OPTION_CLAUDE_WINDOW_READS_M;
+  delete env.ORKESTRA_CLAUDE_PROJECTS;
+  delete env.ORKESTRA_CLAUDE_WINDOW_READS_M;
+  if (projects) env.ORKESTRA_CLAUDE_PROJECTS = projects;
+  if (claudeLimit !== undefined) env.ORKESTRA_CLAUDE_WINDOW_READS_M = claudeLimit;
   if (slotDir) env.ORKESTRA_SLOT_DIR = slotDir;
   return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', env, input: input == null ? '' : input, timeout: 30_000 });
 }
@@ -103,4 +109,73 @@ test('slots are shared across runs; a dead owner\'s slot is taken over', async (
 test('bad usage exits 2', () => {
   assert.strictEqual(cli(['heavy']).status, 2);
   assert.strictEqual(cli(['nope', '--', 'x']).status, 2);
+});
+
+test('Claude quota counts recent assistant input and cache reads across projects and skips bad files', t => {
+  const projects = tmp('ork-g projects-');
+  t.after(() => fs.rmSync(projects, { recursive: true, force: true }));
+  const now = Date.now();
+  const message = (id, hours, reads, input, type = 'assistant') => JSON.stringify({
+    type, timestamp: new Date(now - hours * 3600_000).toISOString(),
+    message: { id, usage: { cache_read_input_tokens: reads, input_tokens: input, cache_creation_input_tokens: 50_000, output_tokens: 50_000 } },
+  });
+  function transcript(relative, ...lines) {
+    const file = path.join(projects, relative);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, lines.join('\n'));
+    return file;
+  }
+
+  const recent = message('main', 1, 700_000, 100_000);
+  transcript('one/main.jsonl', recent, message('old', 6, 500_000, 100_000), message('user', 1, 900_000, 1, 'user'));
+  transcript('two/session/subagents/agent.jsonl', recent, message('agent', 2, 95_000, 5_000));
+  transcript('two/bad.jsonl', message('discarded', 1, 100_000, 0), '{');
+  const stale = transcript('one/stale.jsonl', message('old-file', 1, 900_000, 0), '{');
+  const old = new Date(now - 6 * 3600_000);
+  fs.utimesSync(stale, old, old);
+
+  const limited = cli(['quota'], { projects, claudeLimit: '1' });
+  assert.strictEqual(limited.status, 4);
+  assert.deepStrictEqual(JSON.parse(limited.stdout), {
+    quota: null, claude: { windowReadsM: 0.9, limitM: 1, pct: 90, estimate: true, skippedFiles: 1 }, blocked: ['claude'],
+  });
+  const unlimited = cli(['quota'], { projects });
+  assert.strictEqual(unlimited.status, 0);
+  assert.deepStrictEqual(JSON.parse(unlimited.stdout), {
+    quota: null, claude: { windowReadsM: 0.9, limitM: null, pct: null, estimate: true, skippedFiles: 1 }, blocked: [],
+  });
+});
+
+test('Claude plugin quota warns Codex, blocks heavy at 90%, and yields to the environment limit', t => {
+  const home = tmp('ork-g-home-'), slotDir = tmp('ork-g-s-');
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(slotDir, { recursive: true, force: true }));
+  const config = path.join(home, '.claude'), project = path.join(config, 'projects', 'project');
+  fs.mkdirSync(project, { recursive: true });
+  fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({
+    pluginConfigs: { 'orkestra@orkestra': { options: { claude_window_reads_m: 1 } } },
+  }));
+  fs.writeFileSync(path.join(project, 'session.jsonl'), JSON.stringify({
+    type: 'assistant', timestamp: new Date().toISOString(), message: { usage: { cache_read_input_tokens: 900_000 } },
+  }));
+
+  const child = childScript(`console.log('ran')`);
+  const codex = cli(['codex', '--', ...node, child], { home, claudeLimit: '1.125' });
+  assert.strictEqual(codex.status, 0);
+  assert.match(codex.stdout, /ran/);
+  assert.match(codex.stderr.trim(), /^warning: Claude[^\r\n]*80(?:\.0)?% used$/);
+  assert.strictEqual(cli(['codex', '--', ...node, child], { home }).status, 0);
+
+  const heavy = cli(['heavy', '--', ...node, child], { home, slotDir });
+  assert.strictEqual(heavy.status, 4);
+  const out = JSON.parse(heavy.stdout);
+  assert.strictEqual(out.started, false);
+  assert.deepStrictEqual(out.blocked, ['claude']);
+  assert.strictEqual(out.claude.limitM, 1);
+  assert.deepStrictEqual(fs.readdirSync(slotDir), []);
+
+  const below = cli(['codex', '--', ...node, child], { home, claudeLimit: '2' });
+  assert.strictEqual(below.status, 0);
+  assert.strictEqual(below.stderr, '');
+  assert.strictEqual(cli(['heavy', '--', ...node, child], { home, slotDir, claudeLimit: '2' }).status, 0);
 });

@@ -2,7 +2,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'), path = require('path');
-const { plan, overlap } = require('../skills/orkestra/next_parts.js');
+const os = require('os');
+const { spawnSync } = require('child_process');
+const { plan, overlap, laneMatrix } = require('../skills/orkestra/next_parts.js');
 
 const board = (lanes, parts) => [
   '## Lane matrix', '| Part | parallel? (yes / after: X) | write surface | risk | role | model | reviewer | acceptance (command) |', '|---|---|---|---|---|---|---|---|',
@@ -116,4 +118,53 @@ test('working mode: a board from before the section existed is not blocked', () 
 test('working mode: the board template has the section with Mode empty, so a new job must ask', () => {
   const tpl = fs.readFileSync(path.join(__dirname, '../skills/orkestra/templates/board.md'), 'utf8');
   assert.strictEqual(workingMode(tpl), '');
+});
+
+test('write surfaces ignore notes and trailing words, preserving quoted paths and Windows separators', () => {
+  const text = board([
+    ['A', 'yes', 'a.js (new), `src\\folder name\\b.js` new, label, c/d.js'],
+    ['B', 'yes', '`b.js` (new), e/f.js new'],
+  ], [['A', 'ready'], ['B', 'ready']]);
+  assert.deepStrictEqual(laneMatrix(text).map(row => row.surface), [
+    ['a.js', 'src\\folder name\\b.js', 'c/d.js'], ['b.js', 'e/f.js'],
+  ]);
+  const r = plan(text);
+  assert.strictEqual(r.code, 0);
+  assert.deepStrictEqual(r.start, ['A', 'B']);
+  assert.deepStrictEqual(r.conflicts, []);
+});
+
+test('dispatch holds twice-revised parts for a decision and reports unreadable reviews', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ork reviews-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'board.md');
+  const script = path.join(__dirname, '../skills/orkestra/next_parts.js');
+  const text = board([['A', 'yes', 'a.js'], ['B', 'after: A', 'b.js']], [['A', 'ready'], ['B', 'ready']]);
+  const writeReview = (name, value) => fs.writeFileSync(path.join(dir, `review-${name}.json`), value);
+  const run = mode => {
+    fs.writeFileSync(file, withMode(mode, text));
+    const result = spawnSync(process.execPath, [script, file], { encoding: 'utf8' });
+    assert.strictEqual(result.status, 0, result.stdout || result.stderr);
+    return JSON.parse(result.stdout);
+  };
+
+  writeReview('A', '{"verdict":"REVISE"}');
+  assert.deepStrictEqual(run('auto').start, ['A']);
+  writeReview('A-2', '{"verdict":"REVISE"}');
+  for (const mode of ['auto', 'checkpoints', 'ask']) {
+    const out = run(mode);
+    assert.deepStrictEqual(out.start, []);
+    assert.deepStrictEqual(out.needs_decision, [{
+      part: 'A', why: `REVISE twice — mode ${mode}: ask the user (checkpoints/ask) or write a Ruling (auto)`,
+    }]);
+    assert.deepStrictEqual(out.waiting, [{ part: 'B', why: 'waits for A' }]);
+  }
+  writeReview('A-3', '{"verdict":"APPROVE"}');
+  const resolved = run('auto');
+  assert.deepStrictEqual(resolved.start, ['A']);
+  assert.deepStrictEqual(resolved.needs_decision, []);
+  writeReview('A-3', '{');
+  const unreadable = run('auto');
+  assert.deepStrictEqual(unreadable.start, []);
+  assert.deepStrictEqual(unreadable.needs_decision, [{ part: 'A', why: 'unreadable review' }]);
 });

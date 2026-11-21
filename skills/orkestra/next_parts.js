@@ -8,6 +8,7 @@
 // 2 = no usable board. Output carries `mode` (auto / checkpoints / ask) so every run reminds the conductor how often to ask.
 // A glob counts as its folder, so `src/*.js` and `src/a.py` are reported as overlapping: fix by being exact.
 const fs = require('fs');
+const path = require('path');
 const { locateTable, cells } = require('./board_check.js');
 
 const MERGED = /^(merged|birleşti|birlesti)$/i, ACTIVE = /^(running|in-review|çalışıyor|calisiyor|incelemede)$/i;
@@ -26,6 +27,16 @@ function workingMode(text) {
   return hit ? hit[0] : '';
 }
 
+function writePaths(surface) {
+  const notes = /(`[^`]*`)|\([^()]*\)/g;
+  return surface.replace(notes, (_, quoted) => quoted || '').split(',').map(cell => {
+    const text = cell.trim();
+    const quoted = text.match(/^`([^`]+)`/);
+    // An unquoted path ends at the last word containing a separator or dot.
+    return quoted ? quoted[1] : text.match(/^.*[/\\.]\S*/)?.[0];
+  }).filter(file => file && /[/\\.]/.test(file));
+}
+
 function laneMatrix(text) {
   const lines = text.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
@@ -37,7 +48,7 @@ function laneMatrix(text) {
     const rows = [];
     for (let j = i + 2; j < lines.length && lines[j].trim().startsWith('|'); j++) {
       const r = cells(lines[j]), m = (r[c.parallel] || '').match(/(?:after|sonra)\s*:?\s*(.+)$/i);
-      rows.push({ part: r[c.part] || '', after: m ? m[1].split(/[,;\s]+/).filter(Boolean) : [], surface: (r[c.surface] || '').split(/[,;\s]+/).filter(Boolean),
+      rows.push({ part: r[c.part] || '', after: m ? m[1].split(/[,;\s]+/).filter(Boolean) : [], surface: writePaths(r[c.surface] || ''),
         risk: c.risk >= 0 ? r[c.risk] || '' : null, model: c.model >= 0 ? r[c.model] || '' : '' });
     }
     return rows;
@@ -59,16 +70,33 @@ function overlap(a, b) {
   return null;
 }
 
-function plan(text) {
+function reviewDecision(dir, part, mode) {
+  const verdicts = [];
+  for (const suffix of ['', '-2', '-3']) {
+    const file = path.join(dir, `review-${part}${suffix}.json`);
+    try {
+      verdicts.push(JSON.parse(fs.readFileSync(file, 'utf8'))?.verdict);
+    } catch (error) {
+      if (error.code !== 'ENOENT') return 'unreadable review';
+      verdicts.push(null);
+    }
+  }
+  if (verdicts[0] === 'REVISE' && verdicts[1] === 'REVISE' && verdicts[2] === null) {
+    return `REVISE twice — mode ${mode || 'unset'}: ask the user (checkpoints/ask) or write a Ruling (auto)`;
+  }
+  return null;
+}
+
+function plan(text, boardFile) {
   const lane = laneMatrix(text), table = locateTable(text);
   if (!lane || !table) return { code: 2, errors: ['the board needs a lane matrix and a parts table'] };
   const state = Object.fromEntries(table.rows.map(r => [r.part, r.state]));
   const errors = [], conflicts = [], byName = Object.fromEntries(lane.map(l => [l.part, l]));
   const mode = workingMode(text);
+  const reviewDir = boardFile && path.dirname(boardFile);
   if (mode === '') errors.push('working mode not set: ask the user once (auto / checkpoints / ask) and write it under Working mode');
   for (const l of lane) {
     if (!(l.part in state)) errors.push(`part ${l.part} is in the lane matrix but not in the parts table`);
-    if (!l.surface.length) errors.push(`part ${l.part} has no write surface`);
     if (l.risk === '') errors.push(`part ${l.part} has no risk level`);
     if (l.risk && !LOW_RISK.test(l.risk) && CHEAP_MODEL.test(l.model)) conflicts.push(`part ${l.part} is ${l.risk} risk but routed to ${l.model}: cheap models take low-risk parts only`);
     for (const d of l.after) if (!byName[d]) errors.push(`part ${l.part} waits for unknown part ${d}`);
@@ -87,29 +115,32 @@ function plan(text) {
     if (hit && !dependsOn(a.part, b.part) && !dependsOn(b.part, a.part)) conflicts.push(`${a.part} and ${b.part} both write ${hit[0] === hit[1] ? hit[0] : hit[0] + ' / ' + hit[1]} and neither waits for the other`);
   }
 
-  const start = [], waiting = [], running = [], blocked = [];
+  const start = [], waiting = [], running = [], blocked = [], needs_decision = [];
   const taken = open.filter(l => ACTIVE.test(state[l.part] || ''));
   for (const l of taken) running.push(l.part);
   for (const l of open) {
     const s = state[l.part] || '';
+    const decision = reviewDir && reviewDecision(reviewDir, l.part, mode);
+    if (decision) needs_decision.push({ part: l.part, why: decision });
     if (BLOCKED.test(s)) { blocked.push(l.part); continue; }
-    if (!READY.test(s)) continue;
+    if (decision || !READY.test(s)) continue;
     const missing = l.after.filter(d => !MERGED.test(state[d] || ''));
     if (missing.length) { waiting.push({ part: l.part, why: `waits for ${missing.join(', ')}` }); continue; }
     const clash = taken.find(t => overlap(l.surface, t.surface));
     if (clash) { waiting.push({ part: l.part, why: `shares files with ${clash.part}` }); continue; }
     start.push(l.part); taken.push(l);
   }
-  const stuck = !start.length && !running.length && waiting.length > 0 && !blocked.length;
+  const stuck = !start.length && !running.length && waiting.length > 0 && !blocked.length && !needs_decision.length;
   if (stuck) errors.push(`nothing can start: ${waiting.map(w => `${w.part} ${w.why}`).join('; ')}`);
-  const out = { code: errors.length || conflicts.length ? 1 : 0, start, running, waiting, blocked, conflicts, errors };
+  for (const l of lane) if (!l.surface.length) errors.push(`part ${l.part} has no write surface`);
+  const out = { code: errors.length || conflicts.length ? 1 : 0, start, running, waiting, blocked, needs_decision, conflicts, errors };
   if (mode) out.mode = mode;
   return out;
 }
 
 if (require.main === module) {
   if (!process.argv[2] || !fs.existsSync(process.argv[2])) { console.error('usage: node next_parts.js <board.md>'); process.exit(2); }
-  const { code, ...out } = plan(fs.readFileSync(process.argv[2], 'utf8'));
+  const { code, ...out } = plan(fs.readFileSync(process.argv[2], 'utf8'), process.argv[2]);
   console.log(JSON.stringify(out));
   process.exit(code);
 }
