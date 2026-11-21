@@ -168,7 +168,7 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
       [tb.c.commit, 'none'],
       [tb.c.evidence, `${evidence} review=skip: ${reason}`.trim()],
     ]);
-    const gate = boardCheck(board, null, repo, proposed, part);
+    const gate = boardCheck(board, part, repo, proposed, part);
     if (gate.code) return { code: gate.code, out: { ok: false, part, errors: gate.errors } };
     if (!dryRun) fs.writeFileSync(board, proposed);
     return { code: 0, out: { ok: true, part, commits: [], picked: 0, skipped_reviews: gate.skips, ...(dryRun ? { would_cherry_pick: [] } : {}), ...(gate.others ? { other_parts: gate.others } : {}) } };

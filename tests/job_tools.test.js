@@ -157,6 +157,37 @@ test('a package must resolve to a board part, with exact numeric names taking pr
   assert.match(capped.stderr, /round cap: part P1-2 came back REVISE twice — mode ask:/);
 });
 
+test('second-reviewer packages resolve to the board part and obey the same round cap', () => {
+  const { job, board, run } = boardPackage('checkpoints');
+  for (const name of ['A-codex', 'A-2-codex']) {
+    const result = run(name);
+    assert.strictEqual(result.status, 0, result.stderr);
+    assert.ok(fs.existsSync(path.join(job, `diff-${name}.range.json`)));
+  }
+  const before = fs.readFileSync(board, 'utf8');
+  const capped = run('A-3-codex');
+  assert.strictEqual(capped.status, 1);
+  assert.match(capped.stderr, /round cap: part A came back REVISE twice — mode checkpoints: .*--user/);
+  assert.ok(!fs.existsSync(path.join(job, 'diff-A-3-codex.range.json')));
+  assert.strictEqual(fs.readFileSync(board, 'utf8'), before);
+
+  const allowed = run('A-3-codex', '--user', 'One more review');
+  assert.strictEqual(allowed.status, 0, allowed.stderr);
+  assert.match(fs.readFileSync(board, 'utf8'), /User: review round 3 for A — "One more review"/);
+});
+
+test('round decisions are appended before the next level-two heading', () => {
+  const { board, run } = boardPackage('auto');
+  const before = fs.readFileSync(board, 'utf8').replace('## Notes',
+    '### Review history\r\n- Earlier review\r\n\r\n# Follow-up\r\n- Follow-up notes\r\n\r\n## Notes');
+  fs.writeFileSync(board, before);
+
+  const result = run('A-3', '--ruling', 'Address the remaining issue');
+  assert.strictEqual(result.status, 0, result.stderr);
+  const decision = 'Ruling: review round 3 for A — Address the remaining issue';
+  assert.strictEqual(fs.readFileSync(board, 'utf8'), before.replace('- Follow-up notes\r\n', `- Follow-up notes\r\n${decision}\r\n`));
+});
+
 test('checkpoints requires the user after two REVISEs and records their words once', () => {
   const { job, board, run } = boardPackage('checkpoints');
   const before = fs.readFileSync(board, 'utf8');

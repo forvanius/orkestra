@@ -290,6 +290,19 @@ test('a no-code close records a skip and does not block the next reviewed close'
   assert.strictEqual(boardCheck(s.board, null, s.repo).code, 0);
 });
 
+test('--no-code cannot skip reviews for a high-risk part', () => {
+  const s = setup();
+  fs.appendFileSync(s.board, '\n## Lane matrix\n| Part | parallel? | write surface | domain | risk |\n|---|---|---|---|---|\n| A | yes | a.txt | code | high |\n');
+  const board = fs.readFileSync(s.board, 'utf8'), head = s.g('rev-parse', 'HEAD');
+  const result = runClose(s.board, 'A', '--repo', s.repo, '--no-code', 'notes only');
+  assert.strictEqual(result.status, 1, result.stderr || result.stdout);
+  assert.deepStrictEqual(JSON.parse(result.stdout).errors, [
+    'part A is high risk: it needs two passing reviews (review=a.json+b.json), has a skip',
+  ]);
+  assert.strictEqual(fs.readFileSync(s.board, 'utf8'), board);
+  assert.strictEqual(s.g('rev-parse', 'HEAD'), head);
+});
+
 test('--no-code requires a reason and excludes explicit review and commit flags', () => {
   const s = setup(), before = fs.readFileSync(s.board, 'utf8');
   const args = [s.board, 'A', '--repo', s.repo];

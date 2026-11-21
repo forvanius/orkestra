@@ -30,7 +30,7 @@ function recordDecision(board, decision) {
     fs.appendFileSync(board, `${separator}## Decisions${eol}${decision}${eol}`);
     return;
   }
-  let end = lines.findIndex((line, i) => i > heading && /^#{1,2}[ \t]/.test(line));
+  let end = lines.findIndex((line, i) => i > heading && /^##[ \t]/.test(line));
   if (end < 0) end = lines.length;
   if (lines.slice(heading + 1, end).includes(decision)) return;
   while (end > heading + 1 && !lines[end - 1].trim()) end--;
@@ -44,10 +44,11 @@ function reviewPackage(jobDir, name, base, head, repo = process.cwd(), { ruling 
   let decision = null, legacyOverride = false;
   if (boardText !== null) {
     const names = (partsTable(boardText) || []).map(row => row.part);
-    const suffix = name.match(/^(.+)-(\d+)$/);
-    const exact = names.includes(name), part = exact ? name : suffix?.[1];
+    const packageName = name.replace(/-codex$/, '');
+    const suffix = packageName.match(/^(.+)-(\d+)$/);
+    const exact = names.includes(name), part = exact ? name : (suffix?.[1] ?? packageName);
     if (!names.includes(part)) return { code: 1, error: `package name ${name} does not match a board part; board parts: ${names.join(', ') || '(none)'}` };
-    const round = exact ? '1' : suffix[2].replace(/^0+(?=\d)/, '');
+    const round = (exact ? '1' : (suffix?.[2] ?? '1')).replace(/^0+(?=\d)/, '');
     if (Number(round) >= 3) {
       const modeLine = boardText.match(/^[ \t]*-[ \t]+Mode:[ \t]*([^\r\n]*)/im);
       const value = modeLine?.[1].trim();
