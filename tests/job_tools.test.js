@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'), os = require('os'), path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { newJob } = require('../skills/orkestra/new_job.js');
 const { reviewPackage } = require('../skills/orkestra/review_package.js');
 const { closePart } = require('../skills/orkestra/close_part.js');
@@ -126,6 +126,71 @@ test('a part gets at most three reviews; a fourth needs the user\'s quoted words
   assert.strictEqual(reviewPackage(job, 'A-4', c[2], c[3], r.dir, { userApproved: 'one more round, then merge' }).code, 0);
   assert.strictEqual(JSON.parse(fs.readFileSync(path.join(job, 'diff-A-4.range.json'), 'utf8')).user_approved, 'one more round, then merge');
   assert.strictEqual(reviewPackage(job, 'step-10', base, c[4], r.dir).code, 0);                   // not a re-review: no part "step"
+});
+
+function boardPackage(mode, parts = ['A']) {
+  const r = repo(), job = fs.mkdtempSync(path.join(os.tmpdir(), 'ork board package '));
+  const base = r.g('rev-parse', 'HEAD'), head = r.commit('part change');
+  const board = path.join(job, 'board.md');
+  const lines = ['# Board', '', ...(mode ? [`- Mode: ${mode}`, ''] : []), '## Parts',
+    '| Part | State | Commit | Evidence |', '|---|---|---|---|',
+    ...parts.map(part => `| ${part} | in-review | | |`), '', '## Decisions and open questions',
+    '- Earlier decision', '', '## Notes', '- Keep this section', ''];
+  fs.writeFileSync(board, lines.join('\r\n'));
+  const run = (name, ...flags) => spawnSync(process.execPath, [path.join(__dirname, '../skills/orkestra/review_package.js'),
+    job, name, base, head, '--repo', r.dir, ...flags], { encoding: 'utf8' });
+  return { job, board, run };
+}
+
+test('a package must resolve to a board part, with exact numeric names taking precedence', () => {
+  const { job, run } = boardPackage('ask', ['P1', 'P1-2', 'P1-3']);
+  for (const name of ['Unknown', 'Different-2']) {
+    const result = run(name);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stderr, /board parts: P1, P1-2, P1-3/);
+    assert.ok(!fs.existsSync(path.join(job, `diff-${name}.range.json`)));
+  }
+  assert.strictEqual(run('P1-3').status, 0); // exact part name, round 1
+  assert.strictEqual(run('P1-2-2').status, 0); // round 2 of P1-2
+  const capped = run('P1-2-3');
+  assert.strictEqual(capped.status, 1);
+  assert.match(capped.stderr, /round cap: part P1-2 came back REVISE twice — mode ask:/);
+});
+
+test('checkpoints requires the user after two REVISEs and records their words once', () => {
+  const { job, board, run } = boardPackage('checkpoints');
+  const before = fs.readFileSync(board, 'utf8');
+  for (const flags of [[], ['--ruling', 'Try again'], ['--user', '  ']]) {
+    const result = run('A-3', ...flags);
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stderr, /round cap: part A came back REVISE twice — mode checkpoints: .*--user/);
+    assert.ok(!fs.existsSync(path.join(job, 'diff-A-3.range.json')));
+    assert.strictEqual(fs.readFileSync(board, 'utf8'), before);
+  }
+  for (let i = 0; i < 2; i++) {
+    const allowed = run('A-3', '--user', 'Try one more round.');
+    assert.strictEqual(allowed.status, 0, allowed.stderr);
+  }
+  const decision = 'User: review round 3 for A — "Try one more round."';
+  assert.strictEqual(fs.readFileSync(board, 'utf8'), before.replace('- Earlier decision\r\n', `- Earlier decision\r\n${decision}\r\n`));
+});
+
+test('auto requires a ruling; missing or unknown modes require user words', () => {
+  const auto = boardPackage('auto');
+  const held = auto.run('A-3', '--user', 'Go ahead');
+  assert.strictEqual(held.status, 1);
+  assert.match(held.stderr, /mode auto: .*--ruling/);
+  assert.strictEqual(auto.run('A-3', '--ruling', 'Fix the remaining issue').status, 0);
+  assert.ok(fs.readFileSync(auto.board, 'utf8').includes('\r\nRuling: review round 3 for A — Fix the remaining issue\r\n'));
+
+  for (const mode of [undefined, 'unknown']) {
+    const { board, run } = boardPackage(mode);
+    const result = run('A-3', '--ruling', 'Try again');
+    assert.strictEqual(result.status, 1);
+    assert.match(result.stderr, /mode ask: .*--user/);
+    assert.strictEqual(run('A-3', '--user', 'One more review').status, 0);
+    assert.ok(fs.readFileSync(board, 'utf8').includes('User: review round 3 for A — "One more review"'));
+  }
 });
 
 test('the review bar: real-use bugs block, hardening and narrower edge cases of a fix are polish', () => {

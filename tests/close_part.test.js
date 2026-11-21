@@ -261,11 +261,48 @@ function chained(s) {
   const revise = { ...ok, verdict: 'REVISE', blockers: ['a.txt:1 wrong'] };
   s.save('review-A.json', revise);
   reviewPackage(s.dir, 'A-2', s.sha, c2, s.repo); s.save('review-A-2.json', revise);
-  reviewPackage(s.dir, 'A-3', c2, c3, s.repo);
+  reviewPackage(s.dir, 'A-3', c2, c3, s.repo, { user: 'Run the third review.' });
   return { c3, final: s.save('review-A-3.json', ok) };
 }
 
 const runClose = (...args) => spawnSync(process.execPath, [path.join(__dirname, '../skills/orkestra/close_part.js'), ...args], { encoding: 'utf8' });
+
+test('a no-code close records a skip and does not block the next reviewed close', () => {
+  const s = setup(), before = s.g('rev-parse', 'HEAD');
+  fs.appendFileSync(s.board, '| B | codex | ready | - | t |  | verified notes review=obsolete.json |\n');
+  const args = [s.board, 'B', '--repo', s.repo, '--no-code', 'notes only'];
+  const dry = runClose(...args, '--dry-run');
+  assert.strictEqual(dry.status, 0, dry.stderr || dry.stdout);
+  assert.strictEqual(partsTable(fs.readFileSync(s.board, 'utf8'))[1].state, 'ready');
+
+  const close = runClose(...args);
+  assert.strictEqual(close.status, 0, close.stderr || close.stdout);
+  assert.deepStrictEqual(JSON.parse(close.stdout).commits, []);
+  assert.deepStrictEqual(partsTable(fs.readFileSync(s.board, 'utf8'))[1], {
+    part: 'B', state: 'merged', commit: 'none', evidence: 'verified notes review=skip: notes only',
+  });
+  assert.strictEqual(s.g('rev-parse', 'HEAD'), before);
+  assert.deepStrictEqual(JSON.parse(runClose(...args).stdout).commits, []);
+
+  const normal = closePart(s.board, 'A', { repo: s.repo, review: s.save('review-A.json', ok) });
+  assert.strictEqual(normal.code, 0, JSON.stringify(normal.out));
+  assert.strictEqual(normal.out.picked, 1);
+  assert.strictEqual(boardCheck(s.board, null, s.repo).code, 0);
+});
+
+test('--no-code requires a reason and excludes explicit review and commit flags', () => {
+  const s = setup(), before = fs.readFileSync(s.board, 'utf8');
+  const args = [s.board, 'A', '--repo', s.repo];
+  for (const flag of ['--review', '--commit']) {
+    const result = runClose(...args, '--no-code', 'notes only', flag, 'value');
+    assert.strictEqual(result.status, 2, result.stderr || result.stdout);
+    assert.match(JSON.parse(result.stdout).errors[0], /cannot be combined/);
+  }
+  const missing = runClose(...args, '--no-code');
+  assert.strictEqual(missing.status, 2);
+  assert.match(JSON.parse(missing.stdout).errors[0], /needs a reason/);
+  assert.strictEqual(fs.readFileSync(s.board, 'utf8'), before);
+});
 
 test('a dry run reports the reviewed picks and leaves the board and HEAD unchanged', () => {
   const s = setup(), { c3, final } = chained(s);

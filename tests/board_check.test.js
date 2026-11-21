@@ -64,6 +64,21 @@ test('review=skip needs a reason and is reported', () => {
   assert.match(r.errors[0], /part E: review=skip needs a reason/);
 });
 
+test('a merged no-code row requires none and a review skip with a reason', () => {
+  const merged = (commit, evidence) => board([`| A | codex | merged | - | t | ${commit} | ${evidence} |`], { 'r.json': ok });
+  const valid = boardCheck(merged('none', 'review=skip: docs only'));
+  assert.strictEqual(valid.code, 0);
+  assert.deepStrictEqual(valid.skips, ['part A: review skipped — docs only']);
+  for (const evidence of ['review=r.json', 'review=skip: ', 'review=skip docs only']) {
+    const result = boardCheck(merged('none', evidence));
+    assert.strictEqual(result.code, 1);
+    assert.match(result.errors.join('\n'), /commit none requires review=skip:/);
+  }
+  const empty = boardCheck(merged('', 'review=skip: docs only'));
+  assert.strictEqual(empty.code, 1);
+  assert.match(empty.errors[0], /commit cell is empty/);
+});
+
 test('a handoff needs a board a new session can pick up', () => {
   const { handoffCheck } = require('../skills/orkestra/board_check.js');
   const withNext = (rows, next) => { const b = board(rows, { 'r.json': ok }); fs.appendFileSync(b, next); return b; };

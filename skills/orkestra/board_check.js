@@ -11,7 +11,7 @@
 // `review=skip: <reason>` — allowed, but printed so the conductor tells the user. A part the lane matrix
 // marks high risk needs two passing reviews: `review=a.json+b.json`.
 // A merged row's commit cell must name commits that are really on HEAD of --repo (directly or as a
-// cherry-pick with the same patch): a failed cherry-pick must not leave a part marked merged.
+// cherry-pick with the same patch), or say `none` with `review=skip: <reason>` for a no-code part.
 // A review forced to REVISE by spec.extra alone passes when the evidence holds `accepted-extra=<reason>`
 // (close_part.js --accept-extra writes it); it is printed so the conductor tells the user.
 // Exit: 0 = ok, 1 = a part lacks a passing review or its merged commit is not on HEAD,
@@ -118,6 +118,16 @@ function onHead(repo, cell) {
   return null;
 }
 
+function mergedCommitError(repo, row) {
+  if (row.commit === 'none') {
+    const review = row.evidence.match(REVIEW_RE);
+    const skip = row.evidence.match(/\b(?:review|inceleme)\s*=\s*(?:skip|atla)\s*:\s*\S/i);
+    return skip && review.index === skip.index ? null : 'commit none requires review=skip: <reason>';
+  }
+  if (!row.commit) return 'commit cell is empty — write the merged commit';
+  return repo ? onHead(repo, row.commit) : null;
+}
+
 // text: optional board contents to check instead of the file's (a proposed board); evidence paths
 // still resolve from boardFile's directory.
 // focus: the part being closed. A review problem of another merged part is then reported under `others`
@@ -139,7 +149,7 @@ function boardCheck(boardFile, mergePart, repo = null, text = null, focus = null
     else if (row.part === mergePart && HIGH_RISK.test(risk[row.part] || '') && (r.skip || r.count < 2)) errors.push(`part ${row.part} is high risk: it needs two passing reviews (review=a.json+b.json), has ${r.skip ? "a skip" : r.count}`);
     else if (r.skip) skips.push(`part ${row.part}: review skipped — ${r.skip}`);
     else if (r.accepted) skips.push(`part ${row.part}: reviewer's spec.extra kept — ${r.accepted}`);
-    if (repo && MERGED.test(row.state)) { const e = onHead(repo, row.commit); if (e) errors.push(`part ${row.part}: ${e}`); }
+    if (MERGED.test(row.state)) { const e = mergedCommitError(repo, row); if (e) errors.push(`part ${row.part}: ${e}`); }
   }
   return { code: errors.length ? 1 : 0, errors, skips, ...(others.length ? { others } : {}) };
 }
@@ -174,4 +184,4 @@ if (require.main === module) {
   process.exit(r.code);
 }
 
-module.exports = { partsTable, locateTable, cells, boardCheck, handoffCheck, onHead, git, reviewFiles, acceptedExtra };
+module.exports = { partsTable, locateTable, cells, boardCheck, handoffCheck, onHead, mergedCommitError, git, reviewFiles, acceptedExtra };

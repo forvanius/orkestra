@@ -4,6 +4,7 @@
 // mark the part merged, and confirm it is really on HEAD.
 //
 //   node close_part.js <board.md> <part> --repo <dir> [--review <review-x.json> ...] [--commit <sha> ...]
+//   node close_part.js <board.md> <part> --repo <dir> --no-code "<reason>"
 //
 // --review  the reviewer's result, review-<name>.json; its path goes into the part's evidence as
 //           review=<path>. Repeat it for a high-risk part (two passing reviews: review=a.json+b.json).
@@ -22,7 +23,7 @@
 // Exit: 0 = merged, 1 = the review or the board gate said no, 2 = bad input, 3 = cherry-pick failed.
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
 const { extract, check } = require('./check_verdict.js');
-const { locateTable, cells, boardCheck, onHead, git, reviewFiles } = require('./board_check.js');
+const { locateTable, cells, boardCheck, onHead, mergedCommitError, git, reviewFiles } = require('./board_check.js');
 
 const setRow = (lines, row, changes) => {
   const r = cells(lines[row.line]);
@@ -140,7 +141,12 @@ function pickAsAuthors(repo, shas) {
   return { status: 0 };
 }
 
-function closePart(board, part, { repo = process.cwd(), review = null, commits = [], checked = null, dryRun = false, acceptExtra = null } = {}) {
+function closePart(board, part, { repo = process.cwd(), review = null, commits = [], checked = null, dryRun = false, acceptExtra = null, noCode = null } = {}) {
+  const reviews = [].concat(review || []);
+  if (noCode !== null) {
+    if (reviews.length || commits.length) return { code: 2, out: { ok: false, part, errors: ['--no-code cannot be combined with --review or --commit'] } };
+    if (!noCode.trim()) return { code: 2, out: { ok: false, part, errors: ['--no-code needs a reason'] } };
+  }
   if (acceptExtra !== null && !String(acceptExtra).trim()) return { code: 2, out: { ok: false, part, errors: ['--accept-extra needs a reason'] } };
   if (!fs.existsSync(board)) return { code: 2, out: { ok: false, errors: [`board not found: ${board}`] } };
   const text = fs.readFileSync(board, 'utf8'), t = locateTable(text);
@@ -150,13 +156,26 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
   if (t.c.commit < 0) return { code: 2, out: { ok: false, part, errors: ['the parts table has no commit column'] } };
   if (git(repo, ['rev-parse', '--git-dir']).status !== 0) return { code: 2, out: { ok: false, part, errors: [`not a git repo: ${repo}`] } };
   if (MERGED.test(row.state)) {   // a rerun: nothing to do, but the merge must still be on HEAD
-    const e = onHead(repo, row.commit);
-    return e ? { code: 1, out: { ok: false, part, errors: [`part ${part} is marked merged, but ${e}`] } } : { code: 0, out: { ok: true, part, already_merged: true, commits: row.commit.split(/\s+/).filter(Boolean) } };
+    const e = mergedCommitError(repo, row);
+    const merged = row.commit === 'none' ? [] : row.commit.split(/\s+/).filter(Boolean);
+    return e ? { code: 1, out: { ok: false, part, errors: [`part ${part} is marked merged, but ${e}`] } } : { code: 0, out: { ok: true, part, already_merged: true, commits: merged } };
+  }
+  if (noCode !== null) {
+    const reason = noCode.trim().replace(/[\r\n]+/g, ' ').replace(/\|/g, '/');
+    const evidence = row.evidence.replace(/(?:^|\s)(?:review|inceleme)\s*=\s*(?:(?:skip|atla)\s*:.*|[^\s,;|]+)/i, ' ').trim();
+    const proposed = renderRow(text, part, tb => [
+      [tb.c.state, tb.turkish ? 'birleşti' : 'merged'],
+      [tb.c.commit, 'none'],
+      [tb.c.evidence, `${evidence} review=skip: ${reason}`.trim()],
+    ]);
+    const gate = boardCheck(board, null, repo, proposed, part);
+    if (gate.code) return { code: gate.code, out: { ok: false, part, errors: gate.errors } };
+    if (!dryRun) fs.writeFileSync(board, proposed);
+    return { code: 0, out: { ok: true, part, commits: [], picked: 0, skipped_reviews: gate.skips, ...(dryRun ? { would_cherry_pick: [] } : {}), ...(gate.others ? { other_parts: gate.others } : {}) } };
   }
   let shas = commits.length ? commits : (row.commit.match(/\b[0-9a-f]{7,40}\b/gi) || []);
   if (!shas.length) return { code: 2, out: { ok: false, part, errors: ['no commits: pass --commit or fill the commit cell'] } };
 
-  const reviews = [].concat(review || []);
   let chain = [];
   const files = reviews.length ? reviews.map(f => findFile(board, f) || f) : reviewFiles(row, path.dirname(board)).map(f => path.resolve(path.dirname(board), f));
   if (files.length) {
@@ -234,19 +253,25 @@ function closePart(board, part, { repo = process.cwd(), review = null, commits =
 }
 
 if (require.main === module) {
-  const a = process.argv.slice(2), take = k => { const i = a.indexOf(k); return i >= 0 ? a.splice(i, 2)[1] : null; };
-  const repo = take('--repo') || process.cwd(), checked = take('--checked'), acceptExtra = take('--accept-extra'), commits = [], review = [];
+  const a = process.argv.slice(2), take = k => { const i = a.indexOf(k); return i >= 0 ? a.splice(i, 2)[1] ?? '' : null; };
+  const hasCodeFlags = a.includes('--review') || a.includes('--commit');
+  const repo = take('--repo') || process.cwd(), checked = take('--checked'), acceptExtra = take('--accept-extra'), noCode = take('--no-code'), commits = [], review = [];
   for (let c = take('--commit'); c; c = take('--commit')) commits.push(c);
   for (let r = take('--review'); r; r = take('--review')) review.push(r);
   const dryRunIndex = a.indexOf('--dry-run'), dryRun = dryRunIndex >= 0;
   if (dryRun) a.splice(dryRunIndex, 1);
-  if (a.length !== 2) {
-    const usage = 'usage: node close_part.js <board.md> <part> --repo <dir> [--review <review-x.json> ...] [--checked "<what you checked>"] [--accept-extra "<reason>"] [--commit <sha> ...]';
+  if (a.length !== 2 || noCode?.startsWith('--')) {
+    const usage = 'usage: node close_part.js <board.md> <part> --repo <dir> [--no-code "<reason>" | [--review <review-x.json> ...] [--checked "<what you checked>"] [--accept-extra "<reason>"] [--commit <sha> ...]]';
     if (dryRun) console.log(JSON.stringify({ ok: false, errors: [usage], dry_run: true }));
     else console.error(usage);
     process.exit(2);
   }
-  const r = closePart(a[0], a[1], { repo, review, commits, checked, dryRun, acceptExtra });
+  let r;
+  try {
+    r = noCode !== null && hasCodeFlags
+      ? { code: 2, out: { ok: false, part: a[1], errors: ['--no-code cannot be combined with --review or --commit'] } }
+      : closePart(a[0], a[1], { repo, review, commits, checked, dryRun, acceptExtra, noCode });
+  } catch (e) { r = { code: 2, out: { ok: false, part: a[1], errors: [e.message.replace(/[\r\n]+/g, ' ')] } }; }
   console.log(JSON.stringify(dryRun ? { ...r.out, dry_run: true } : r.out));
   process.exit(r.code);
 }
