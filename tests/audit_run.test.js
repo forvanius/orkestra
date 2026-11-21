@@ -433,3 +433,61 @@ test('a system reminder is not a new run, and the wait before a resumption is no
   const { facts } = audit(fixture([asst(0, 50_000), asst(60, 60_000)], [['a', 'orkestra:worker', busy()], ['b', 'orkestra:worker', busy()], ['c', 'orkestra:worker', busy()], ['d', 'orkestra:worker', resumed]]), ['s1'], {});
   assert.strictEqual(facts.maxParallelClaude, 3);
 });
+
+const userTurn = (min, content) => ({ type: 'user', timestamp: T(min), message: { content } });
+const taskNotice = (id, status = 'running') =>
+  `<task-notification>\n${id ? `<task-id>${id}</task-id>\n` : ''}<status>${status}</status>\n</task-notification>`;
+
+test('idle_wakes counts harness responses with no tools or only a previously read path', () => {
+  const waiting = asst(3, 1_000);
+  const proj = fixture([
+    asst(0, 100_000), // no visible trigger
+    userTurn(1, 'Read the notes'), use(1, 'first', 'Read', { file_path: 'C:/sample/notes.md' }),
+    userTurn(2, taskNotice('a')), waiting, waiting,
+    userTurn(4, [{ type: 'text', text: '<system-reminder>Waiting</system-reminder>' }]), asst(5, 2_000),
+    userTurn(6, '<hook-output>Waiting</hook-output>'), asst(7, 3_000),
+    use(8, 'repeat', 'Read', { file_path: 'C:\\sample\\notes.md' }), res(8, 'repeat', 'notes'),
+    userTurn(9, taskNotice('b')), asst(10, 4_000), use(11, 'busy', 'Bash', { command: 'git status' }),
+    userTurn(12, taskNotice('c')), asst(13, 5_000), use(14, 'new', 'Read', { file_path: 'other.md' }),
+    userTurn(15, 'Still waiting'), asst(16, 6_000),
+    userTurn(17, '<system-reminder>Waiting</system-reminder>Any news?'), asst(18, 7_000),
+    userTurn(19, '<unrecognized-event>Waiting</unrecognized-event>'), asst(20, 8_000),
+    userTurn(21, taskNotice('d')), // never answered
+  ], [['subagent', 'orkestra:worker', [userTurn(2, taskNotice('a')), asst(3, 12_000, 'low', 'claude-sonnet-x')]]]);
+  const result = audit(proj, ['s1'], {});
+  const { facts, findings } = result;
+  assert.deepStrictEqual(facts.idleWakes?.examples, [T(3), T(5), T(7)]);
+  assert.strictEqual(facts.idleWakes.count, 3);
+  assert.strictEqual(facts.idleWakes.cacheReads, 6_000);
+  assert.strictEqual(facts.idleWakes.unknown, 2);
+  assert.ok(facts.idleWakes.sharePct < 10);
+  assert.ok(findings.some(f => f.level === 'WARN' && f.rule === 'idle_wakes'));
+  assert.match(render(result), /3 idle wakes used 6000 cache reads/);
+});
+
+test('idle_wakes warns at 10% of conductor cache reads even with only one idle wake', () => {
+  const lines = [userTurn(0, 'Start'), asst(1, 90_000),
+    userTurn(2, '<background-task-completion>Done</background-task-completion>'), asst(3, 10_000)];
+  const result = audit(fixture(lines), ['s1'], {});
+  assert.ok(result.findings.some(f => f.level === 'WARN' && f.rule === 'idle_wakes'));
+  const below = audit(fixture([...lines, userTurn(4, 'Continue'), asst(5, 1_000)]), ['s1'], {});
+  assert.strictEqual(below.facts.idleWakes.count, 1);
+  assert.ok(!below.findings.some(f => f.rule === 'idle_wakes'));
+});
+
+test('repeat_notices counts interim notices by task, including queued notices, once per delivery', () => {
+  const first = taskNotice('a');
+  const entries = [
+    { type: 'queue-operation', operation: 'enqueue', timestamp: T(1), content: first },
+    userTurn(2, first), userTurn(3, taskNotice('a')), userTurn(4, taskNotice('b')),
+    userTurn(5, taskNotice('a')), userTurn(6, taskNotice('a', 'completed')),
+    userTurn(7, taskNotice('a')), userTurn(8, taskNotice()), userTurn(9, taskNotice('b', 'completed')),
+  ];
+  const result = audit(fixture(entries), ['s1'], {});
+  assert.deepStrictEqual(result.facts.repeatNotices, { counts: { a: 3, b: 1 }, skipped: 1 });
+  assert.deepStrictEqual(result.findings.filter(f => f.rule === 'repeat_notices').map(f => f.level), ['WARN', 'INFO']);
+  assert.match(render(result), /task a sent 3 notices before completion/);
+  assert.match(render(result), /skipped 1 task notification\(s\) without a task id/);
+  const below = audit(fixture(entries.filter(e => e.timestamp !== T(5))), ['s1'], {});
+  assert.ok(!below.findings.some(f => f.rule === 'repeat_notices' && f.level === 'WARN'));
+});

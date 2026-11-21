@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'), os = require('os'), path = require('path');
+const { spawnSync } = require('node:child_process');
 const { encodeProjectDir, projectDirFor, latestSessions, sum, collect } = require('../skills/orkestra/usage_sum.js');
 
 const msg = (id, model, cr, out, ts) => JSON.stringify({ type: 'assistant', timestamp: ts,
@@ -50,4 +51,58 @@ test('--here helpers find the project folder and the newest session', () => {
   assert.strictEqual(projectDirFor('/work/other', root), null);
   assert.deepStrictEqual(latestSessions(proj, 1), ['sess1']);
   assert.deepStrictEqual(latestSessions(proj, 5), ['sess1', 'old']);
+});
+
+const cli = (args, options) => spawnSync(process.execPath, [
+  path.join(__dirname, '../skills/orkestra/usage_sum.js'), ...args,
+], { encoding: 'utf8', ...options });
+
+test('--here --budget compares all Claude reads, conductor reads and wall time', () => {
+  const { root, proj } = fixture();
+  const cwd = path.join(root, 'sample workspace');
+  const projects = path.join(root, '.claude', 'projects');
+  const board = path.join(cwd, 'sample board.md');
+  fs.mkdirSync(cwd);
+  fs.mkdirSync(projects, { recursive: true });
+  fs.appendFileSync(path.join(proj, 'sess1.jsonl'), '\n' + JSON.stringify({
+    type: 'user', timestamp: '2026-10-28T11:15:00Z', message: { content: 'checkpoint' },
+  }));
+  fs.renameSync(proj, path.join(projects, encodeProjectDir(cwd)));
+  fs.writeFileSync(board, '# Board\n\n## Budget\n- Estimate: claude_reads=0.0084M conductor=0.004M time=2.5h\n');
+  const options = { cwd, env: { ...process.env, HOME: root, USERPROFILE: root } };
+  const result = cli(['--here', '--budget', 'sample board.md'], options);
+  assert.strictEqual(result.status, 0, result.stderr || result.error?.message);
+  assert.match(result.stdout, /TOTAL[^\r\n]*\r?\nbudget: claude_reads 0\.00M \/ 0\.0084M \(50%\), conductor 0\.00M \/ 0\.004M \(100%\), time 1\.3h \/ 2\.5h\s*$/);
+  const json = cli(['--here', '--budget', board, '--json'], options);
+  assert.strictEqual(json.status, 0, json.stderr);
+  assert.deepStrictEqual(JSON.parse(json.stdout).budget, {
+    claude_reads: { spent: 0.0042, estimate: 0.0084, pct: 50 },
+    conductor: { spent: 0.004, estimate: 0.004, pct: 100 },
+    time: { spent: 1.3, estimate: 2.5 },
+  });
+});
+
+test('--budget reads a partial CRLF estimate and ignores estimates in other sections', () => {
+  const { root, proj } = fixture();
+  const board = path.join(root, 'board.md');
+  fs.writeFileSync(board, '## Budget\r\n- Estimate: conductor=.01M\r\n## Other\r\n- Estimate: time=1h\r\n');
+  const result = cli([proj, 'sess1', '--budget', board]);
+  assert.strictEqual(result.status, 0, result.stderr);
+  assert.match(result.stdout, /budget: conductor 0\.00M \/ 0\.01M \(40%\)\s*$/);
+});
+
+test('--budget reports a board without a Budget section and refuses an unreadable board', () => {
+  const { root, proj } = fixture();
+  const board = path.join(root, 'board.md');
+  const args = [proj, 'sess1', '--budget'];
+  fs.writeFileSync(board, '## Plan\n- Estimate: time=1h\n');
+  const result = cli([...args, board]);
+  assert.strictEqual(result.status, 0, result.stderr);
+  assert.match(result.stdout, /budget: no estimate on the board\s*$/);
+  const json = cli([...args, board, '--json']);
+  assert.strictEqual(json.status, 0, json.stderr);
+  assert.deepStrictEqual(JSON.parse(json.stdout).budget, {});
+  const missing = cli([...args, path.join(root, 'absent.md')]);
+  assert.strictEqual(missing.status, 2);
+  assert.strictEqual(missing.stderr.trim(), 'cannot read budget board (ENOENT)');
 });

@@ -58,6 +58,100 @@ function runsOf(entries) {
 }
 const textOf = c => typeof c === 'string' ? c : Array.isArray(c) ? c.map(x => x.text || '').join('\n') : '';
 
+function wakeTrigger(e) {
+  if (content(e).some(c => c.type === 'tool_result')) return 'tool_result';
+  const text = textOf(e.message?.content).trim();
+  if (/^<(?:task-notification|hook-output|background-task-completion|local-command-stdout)>/.test(text)) return 'harness';
+  if (/^<system-reminder>/.test(text)) {
+    const remainder = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim();
+    if (!remainder || remainder === text) return 'harness';
+    return wakeTrigger({ ...e, message: { content: remainder } });
+  }
+  if (!text || e.isMeta || /^<[\w/-]/.test(text)) return 'unknown';
+  return 'typed';
+}
+
+function scanWakes(entries, stats, seenResponses, seenReadsUsage) {
+  const readPaths = new Set();
+  let turn;
+  const start = trigger => ({ trigger, responded: false, idle: true, cacheReads: 0, timestamp: null });
+  const finish = () => {
+    if (!turn.responded) return;
+    if (turn.trigger === 'unknown') stats.unknown++;
+    if (turn.trigger !== 'harness' || !turn.idle) return;
+    stats.count++;
+    stats.cacheReads += turn.cacheReads;
+    if (turn.timestamp && stats.examples.length < 3) stats.examples.push(turn.timestamp);
+  };
+  turn = start('unknown');
+  for (const e of entries) {
+    if (e.type === 'user') {
+      finish();
+      turn = start(wakeTrigger(e));
+    }
+    if (e.type !== 'assistant') continue;
+    const id = e.message?.id;
+    if (!id || !seenResponses.has(id)) {
+      turn.responded = true;
+      turn.timestamp ||= e.timestamp;
+      if (id) seenResponses.add(id);
+    }
+    for (const c of content(e)) {
+      if (c.type !== 'tool_use') continue;
+      const file = c.name === 'Read' && c.input?.file_path;
+      if (typeof file !== 'string' || !file) {
+        turn.idle = false;
+        continue;
+      }
+      const key = /^[a-z]:|\\/i.test(file) ? path.win32.normalize(file).toLowerCase() : path.posix.normalize(file);
+      if (!readPaths.has(key)) turn.idle = false;
+      readPaths.add(key);
+    }
+    const usage = e.message?.usage;
+    if (usage && (!id || !seenReadsUsage.has(id))) {
+      turn.cacheReads += usage.cache_read_input_tokens || 0;
+      if (id) seenReadsUsage.add(id);
+    }
+  }
+  finish();
+}
+
+function scanNotices(entries, stats, seen) {
+  // The enqueue and the user message can be two records of the same notice.
+  const pending = new Map(), thisSession = new Set();
+  for (const e of entries) {
+    const queued = e.type === 'queue-operation' && (!e.operation || e.operation === 'enqueue');
+    if (!queued && e.type !== 'user') continue;
+    const text = textOf(queued ? e.content : e.message?.content);
+    if (!queued && !/^\s*<(?:task-notification|system-reminder)>/.test(text)) continue;
+    for (const [, body] of text.matchAll(/<task-notification>([\s\S]*?)(?=<\/task-notification>|<task-notification>|$)/g)) {
+      const notice = body.replace(/\r\n/g, '\n').trim();
+      const key = JSON.stringify([e.type, e.uuid || e.timestamp, notice]);
+      thisSession.add(key);
+      const copies = pending.get(notice) || 0;
+      if (queued) pending.set(notice, copies + 1);
+      else if (copies) {
+        pending.set(notice, copies - 1);
+        continue;
+      }
+      if (seen.has(key)) continue;
+      const id = notice.match(/<task-id>\s*([^<]*?)\s*<\/task-id>/)?.[1];
+      if (!id) {
+        stats.skipped++;
+        continue;
+      }
+      if (/<status>\s*completed\s*<\/status>/.test(notice)) stats.completed.add(id);
+      else if (!stats.completed.has(id)) stats.counts.set(id, (stats.counts.get(id) || 0) + 1);
+    }
+  }
+  for (const key of thisSession) seen.add(key);
+}
+
+function idleWakeDetails(wakes) {
+  const examples = wakes.examples.length ? ` · examples ${wakes.examples.join(', ')}` : '';
+  return `${wakes.count} idle wakes used ${wakes.cacheReads} cache reads (${wakes.sharePct.toFixed(1)}% of conductor reads) · unknown triggers ${wakes.unknown}${examples}`;
+}
+
 function index(entries) {
   const uses = [], results = {}, done = {};
   for (const e of entries) {
@@ -229,6 +323,9 @@ function audit(proj, ids, opts = {}) {
   // A session continued after its context filled up starts with a copy of the previous one:
   // count every message and tool call once across all sessions.
   const seenMsg = new Set(), seenUsage = new Set(), seenUse = new Set();
+  const idleWakes = { count: 0, cacheReads: 0, unknown: 0, examples: [] };
+  const notices = { counts: new Map(), completed: new Set(), skipped: 0 };
+  const seenResponses = new Set(), seenWakeUsage = new Set(), seenNotices = new Set();
   let unguarded = 0, handoffChecks = 0, handoffsSaid = 0, finalReviews = 0;
   const boardPaths = new Set();
 
@@ -259,6 +356,8 @@ function audit(proj, ids, opts = {}) {
 
   for (const sid of ids) {
     const main = load(path.join(proj, sid + '.jsonl'));
+    scanWakes(main, idleWakes, seenResponses, seenWakeUsage);
+    scanNotices(main, notices, seenNotices);
     const { uses, results, done } = index(main), files = bgFiles({ uses, results, done });
     let calls = 0, base = 0;
     for (const e of main) {
@@ -379,6 +478,14 @@ function audit(proj, ids, opts = {}) {
   if (facts.codex.length >= 4 && high / facts.codex.length > 0.5) add('WARN', 'codex-effort', `${high}/${facts.codex.length} Codex calls on high effort — reserve it for hard or critical parts`);
 
   const total = mainCr + subCr;
+  idleWakes.sharePct = mainCr ? 100 * idleWakes.cacheReads / mainCr : 0;
+  facts.idleWakes = idleWakes;
+  facts.repeatNotices = { counts: Object.fromEntries(notices.counts), skipped: notices.skipped };
+  if (idleWakes.count >= 3 || idleWakes.sharePct >= 10) add('WARN', 'idle_wakes', idleWakeDetails(idleWakes));
+  for (const [id, count] of notices.counts) {
+    if (count >= 3) add('WARN', 'repeat_notices', `task ${id} sent ${count} notices before completion`);
+  }
+  if (notices.skipped) add('INFO', 'repeat_notices', `skipped ${notices.skipped} task notification(s) without a task id`);
   facts.conductor = { readsM: +(mainCr / 1e6).toFixed(2), sharePct: total ? Math.round(100 * mainCr / total) : 0, maxContextK: Math.round(maxCtx / 1000), maxGrowthK: Math.round(maxGrowth / 1000), efforts, imagesOpened: images.length, shellCalls, shellReads };
   facts.wallMinutes = first ? +mins(first, last).toFixed(1) : 0;
   if (opts.codexHome && first) facts.codexRollouts = codexRollouts(first, last, opts.codexHome);
@@ -394,6 +501,9 @@ function render({ facts: f, findings }) {
   const L = [];
   L.push(`# Orkestra run audit`, ``, `Sessions: ${f.sessions.join(', ')} · wall clock ${f.wallMinutes} min`, ``);
   L.push(`## Conductor`, `- reads ${f.conductor.readsM} M (${f.conductor.sharePct}% of Claude reads) · max context ${f.conductor.maxContextK} K, grown ${f.conductor.maxGrowthK} K · effort ${JSON.stringify(f.conductor.efforts)} · images opened ${f.conductor.imagesOpened} · shell reads ${f.conductor.shellReads}/${f.conductor.shellCalls}`, ``);
+  if (f.idleWakes && !findings.some(x => x.rule === 'idle_wakes')) {
+    L.splice(L.length - 1, 0, `- ${idleWakeDetails(f.idleWakes)}`);
+  }
   const untimed = f.codex.filter(c => c.untimed).length;
   L.push(`## Codex (${f.codex.length} calls, ${f.codexTokens} tokens visible in Claude transcripts${untimed ? `; ${untimed} not timed here (detached or output to a file), see Codex's own files below` : ''})`);
   const x = f.codexRollouts;
