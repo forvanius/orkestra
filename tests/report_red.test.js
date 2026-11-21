@@ -173,3 +173,23 @@ test('red check: --expect names the failing check; the red run must show it', ()
   res = redCheck({ repo: r.dir, base: r.base, files: ['helper.js'], cmd: 'node crash.test.js', expect: 'Cannot find module' });
   assert.strictEqual(res.code, 0, 'the conductor says this error is the bug: accepted');
 });
+
+// Python's unittest prints a traceback for every failed check; that output is a failed check, not a crash.
+// Simulated in node so the suite needs no Python.
+const NL = String.fromCharCode(10);
+const unittestLike = lines => "const ok = require('./lib.js')(1) === 3;" + NL
+  + 'if (!ok) { console.error(' + JSON.stringify(lines.join(NL)) + '); process.exit(1); }' + NL;
+const UNITTEST_FAIL = unittestLike(['FAIL: test_adds_two (test_lib.LibTest)', '-'.repeat(70), 'Traceback (most recent call last):', '  File "test_lib.py", line 7, in test_adds_two', '    self.assertEqual(lib(1), 3)', 'AssertionError: 2 != 3', '', 'FAILED (failures=1)']);
+const UNITTEST_ERROR = unittestLike(['ERROR: test_adds_two (test_lib.LibTest)', 'Traceback (most recent call last):', '  File "test_lib.py", line 7, in test_adds_two', "NameError: name 'lib2' is not defined", '', 'FAILED (errors=1)']);
+
+test('red check: a unittest-style FAIL with its traceback is proof; a unittest ERROR (NameError) is a crash', () => {
+  const r = repo();
+  fs.writeFileSync(path.join(r.dir, 'ut_fail.test.js'), UNITTEST_FAIL);
+  fs.writeFileSync(path.join(r.dir, 'ut_error.test.js'), UNITTEST_ERROR);
+  r.g('add', '-A'); r.g('commit', '-qm', 'unittest-style tests');
+  let res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node ut_fail.test.js' });
+  assert.strictEqual(res.code, 0, JSON.stringify(res.out));
+  res = redCheck({ repo: r.dir, base: r.base, files: ['lib.js'], cmd: 'node ut_error.test.js' });
+  assert.strictEqual(res.code, 1, JSON.stringify(res.out));
+  assert.match(res.out.errors[0], /crashed \(.*NameError/);
+});

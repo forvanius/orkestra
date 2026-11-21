@@ -14,7 +14,8 @@
 // Before changing anything it saves the files and a manifest under the repo's git folder; a killed run
 // leaves them there, and the next run refuses until --restore puts them back.
 // The red run must fail a check, not crash: a new ReferenceError, TypeError, missing module and the like
-// (one the green run doesn't show) is refused. --expect "<text>": the red output must contain this text
+// (one the green run doesn't show) is refused, unless the output also shows a failed assertion (unittest's
+// FAIL + traceback, pytest's `E assert`, node:test's `not ok` are checks, not crashes). --expect "<text>": the red output must contain this text
 // (the failing assertion's message); use it when the bug itself is such an error.
 // Known limit: a test killed from outside on Windows exits like a failing test, so it would read as red;
 // don't run it under a timeout that kills it.
@@ -33,7 +34,14 @@ const run = (cmd, cwd) => {
 // A red run that crashed (the test's own code or harness broke) proves nothing about the bug: it would be red
 // for any reason. Markers that also show in the green run are noise (a logged warning), so only new ones count.
 const CRASH = /\b(?:ReferenceError|TypeError|SyntaxError|RangeError|ERR_MODULE_NOT_FOUND|ModuleNotFoundError|ImportError|NameError|AttributeError|IndentationError)\b|Cannot find module|is not defined\b|is not a function\b|Cannot read propert(?:y|ies) of (?:undefined|null)|Traceback \(most recent call last\)|panicked at/g;
-const crashes = (red, green) => { const seen = new Set(green.match(CRASH) || []); return [...new Set(red.match(CRASH) || [])].filter(m => !seen.has(m)); };
+// A failed check is proof even when the runner also prints a traceback for it (Python's unittest prints
+// "Traceback" for every FAIL; pytest and node:test print stacks too): such output is not a crash.
+const FAILED_CHECK = /\bAssertionError\b|^FAIL: |^FAILED\b.*\bfailures=|^E\s+assert\b|^not ok\b|\bassert(?:ion)? failed\b/m;
+const crashes = (red, green) => {
+  if (FAILED_CHECK.test(red)) return [];
+  const seen = new Set(green.match(CRASH) || []);
+  return [...new Set(red.match(CRASH) || [])].filter(m => !seen.has(m));
+};
 
 // What a run did to tracked files, so a test that rewrites fixtures is caught instead of trusted: the
 // status lines plus a hash of the tracked diff (a file already modified can change and keep its status).
