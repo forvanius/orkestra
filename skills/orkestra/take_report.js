@@ -9,7 +9,8 @@
 //   node take_report.js <job dir> <name> [--from <the agent's working tree>]
 //   node take_report.js <job dir> <name> --file <final message saved as UTF-8>   (or --stdin from bash)
 //
-// <name> is the file name without .md: report-A, verify-A, ...
+// <name> is the file name without .md/.txt: report-A, verify-A, ... A .txt report is taken like a .md one
+// (the harness refuses a subagent's Write of report-*.md, so briefs ask for report-<part>.txt).
 // --stdin is for an agent whose own write was refused (a harness rule, a sandbox): it put the whole report
 // in its final message, which is already in the conductor's context, so saving it costs nothing extra. The
 // conductor pipes that message in VERBATIM; the file is marked as saved from the final message. Writing a
@@ -19,21 +20,25 @@
 const fs = require('fs'), path = require('path');
 
 function takeReport(jobDir, name, from = null) {
-  name = String(name || '').replace(/\.md$/i, '');   // "research" and "research.md" name the same file
-  if (from === '') return { code: 2, out: { ok: false, errors: ['--from needs the agent\'s working tree'] } };
+  name = String(name || '').replace(/\.(md|txt)$/i, '');   // "research", "research.md" and "research.txt" name the same report
+  if (from === '') return { code: 2, out: { ok: false, errors: ["--from needs the agent's working tree"] } };
   if (!/^[\w.-]+$/.test(name)) return { code: 2, out: { ok: false, errors: [`bad report name: ${name}`] } };
   if (!jobDir || !fs.existsSync(jobDir)) return { code: 2, out: { ok: false, errors: [`job folder not found: ${jobDir}`] } };
-  const target = path.join(jobDir, name + '.md');
   const slash = p => p.replace(/\\/g, '/'), isFile = p => fs.statSync(p, { throwIfNoEntry: false })?.isFile();
+  // .txt first-class: the Claude Code harness refuses a subagent's Write of report-*.md, but not .txt.
+  const exts = ['.md', '.txt'], pick = dir => exts.map(e => path.join(dir, name + e)).find(isFile);
   if (!from) {
     // Only for an agent that worked in the conductor's own checkout: the job folder is its tree.
-    return isFile(target) ? { code: 0, out: { ok: true, report: slash(target), copied: false } }
-      : { code: 1, out: { ok: false, errors: [`no ${name}.md in ${slash(jobDir)}; if the agent worked in its own tree, pass --from <that tree>`] } };
+    const t = pick(jobDir);
+    return t ? { code: 0, out: { ok: true, report: slash(t), copied: false } }
+      : { code: 1, out: { ok: false, errors: [`no ${name}.md or ${name}.txt in ${slash(jobDir)}; if the agent worked in its own tree, pass --from <that tree>`] } };
   }
   // With --from the agent's tree decides, every round: an older copy in the job folder never stands in
   // for a report this round did not write.
-  const source = path.join(from, '.orkestra', path.basename(path.resolve(jobDir)), name + '.md');
-  if (!isFile(source)) return { code: 1, out: { ok: false, errors: [`no report at ${slash(source)}: the agent did not write it — ask for it again, don't write it from its summary`] } };
+  const srcDir = path.join(from, '.orkestra', path.basename(path.resolve(jobDir)));
+  const source = pick(srcDir);
+  if (!source) return { code: 1, out: { ok: false, errors: [`no report at ${slash(path.join(srcDir, name))}.md or .txt: the agent did not write it — ask for it again, don't write it from its summary`] } };
+  const target = path.join(jobDir, path.basename(source));
   if (path.resolve(source) === path.resolve(target)) return { code: 0, out: { ok: true, report: slash(target), copied: false } };
   fs.copyFileSync(source, target);
   return { code: 0, out: { ok: true, report: slash(target), copied: true, from: slash(source) } };

@@ -193,3 +193,21 @@ test('red check: a unittest-style FAIL with its traceback is proof; a unittest E
   assert.strictEqual(res.code, 1, JSON.stringify(res.out));
   assert.match(res.out.errors[0], /crashed \(.*NameError/);
 });
+
+test('a report written as .txt (the harness refuses report-*.md from a subagent) is taken like a .md one', () => {
+  const job = path.join(tmp('ork-job-'), '.orkestra', 'pilot'); fs.mkdirSync(job, { recursive: true });
+  const tree = tmp('ork-tree-'), own = path.join(tree, '.orkestra', 'pilot'); fs.mkdirSync(own, { recursive: true });
+  fs.writeFileSync(path.join(own, 'report-T.txt'), 'T done');
+  let r = takeReport(job, 'report-T', tree);
+  assert.strictEqual(r.code, 0, JSON.stringify(r.out));
+  assert.strictEqual(r.out.copied, true);
+  assert.strictEqual(fs.readFileSync(path.join(job, 'report-T.txt'), 'utf8'), 'T done');
+  assert.deepStrictEqual([takeReport(job, 'report-T.txt').code, takeReport(job, 'report-T').out.copied], [0, false]);
+  assert.strictEqual(takeReport(job, 'report-U', tree).code, 1);
+  // --stdin saves the final message from a pipe, verbatim
+  const cli = path.join(__dirname, '..', 'skills', 'orkestra', 'take_report.js');
+  const msg = 'Did the work, checks pass.\n'.repeat(10) + 'VERDICT: APPROVE\n{"verdict":"APPROVE"}';
+  const p = require('child_process').spawnSync(process.execPath, [cli, job, 'report-S', '--stdin'], { input: msg, encoding: 'utf8' });
+  assert.strictEqual(p.status, 0, p.stdout + p.stderr);
+  assert.match(fs.readFileSync(path.join(job, 'report-S.md'), 'utf8'), /Did the work, checks pass/);
+});
