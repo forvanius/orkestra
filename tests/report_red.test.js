@@ -211,3 +211,57 @@ test('a report written as .txt (the harness refuses report-*.md from a subagent)
   assert.strictEqual(p.status, 0, p.stdout + p.stderr);
   assert.match(fs.readFileSync(path.join(job, 'report-S.md'), 'utf8'), /Did the work, checks pass/);
 });
+
+test('explicit extensions select one file and bare names select the newest report', () => {
+  const job = path.join(tmp('ork-job-'), '.orkestra', 'pilot'); fs.mkdirSync(job, { recursive: true });
+  const tree = tmp('ork-tree-'), own = path.join(tree, '.orkestra', 'pilot'); fs.mkdirSync(own, { recursive: true });
+  for (const dir of [job, own]) {
+    const md = path.join(dir, 'report-A.md'), txt = path.join(dir, 'report-A.txt');
+    fs.writeFileSync(md, 'stale report');
+    fs.writeFileSync(txt, 'fresh report');
+    fs.utimesSync(md, 1000, 1000);
+    fs.utimesSync(txt, 2000, 2000);
+    fs.writeFileSync(path.join(dir, 'report-B.md'), 'only markdown');
+    fs.writeFileSync(path.join(dir, 'report-C.txt'), 'only text');
+  }
+  for (const from of [null, tree]) {
+    for (const [name, filename, contents] of [
+      ['report-A', 'report-A.txt', 'fresh report'],
+      ['report-A.txt', 'report-A.txt', 'fresh report'],
+      ['report-A.md', 'report-A.md', 'stale report'],
+    ]) {
+      const result = takeReport(job, name, from);
+      assert.strictEqual(result.code, 0, JSON.stringify(result.out));
+      assert.strictEqual(path.basename(result.out.report), filename);
+      assert.strictEqual(fs.readFileSync(result.out.report, 'utf8'), contents);
+    }
+    assert.strictEqual(takeReport(job, 'report-B.txt', from).code, 1);
+    assert.strictEqual(takeReport(job, 'report-C.md', from).code, 1);
+  }
+  fs.utimesSync(path.join(job, 'report-A.md'), 3000, 3000);
+  fs.utimesSync(path.join(job, 'report-A.txt'), 2000, 2000);
+  assert.strictEqual(path.basename(takeReport(job, 'report-A').out.report), 'report-A.md');
+});
+
+test('explicit fallback filenames round-trip through --stdin and --file', () => {
+  const { spawnSync } = require('child_process');
+  const job = tmp('ork-job-');
+  const cli = path.join(__dirname, '..', 'skills', 'orkestra', 'take_report.js');
+  const message = 'Did the work, checks pass.\n'.repeat(10) + 'VERDICT: APPROVE\n{"verdict":"APPROVE"}';
+  const file = path.join(tmp('ork-msg-'), 'message.txt');
+  fs.writeFileSync(file, message);
+  for (const [filename, flags] of [
+    ['report-A.txt', ['--stdin']],
+    ['report-B.txt', ['--file', file]],
+    ['report-C.md', ['--file', file]],
+  ]) {
+    const save = spawnSync(process.execPath, [cli, job, filename, ...flags], { input: message, encoding: 'utf8' });
+    assert.strictEqual(save.status, 0, save.stdout + save.stderr);
+    const saved = JSON.parse(save.stdout);
+    assert.strictEqual(path.basename(saved.report), filename);
+    const lookup = spawnSync(process.execPath, [cli, job, filename], { encoding: 'utf8' });
+    assert.strictEqual(lookup.status, 0, lookup.stdout + lookup.stderr);
+    assert.strictEqual(JSON.parse(lookup.stdout).report, saved.report);
+    assert.ok(fs.readFileSync(saved.report, 'utf8').endsWith(message + '\n'));
+  }
+});
