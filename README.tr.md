@@ -2,7 +2,7 @@
 
 İşi birkaç ajana bölen, her değişikliği başka bir firmanın modeline inceleten ve değişikliğin birleşip birleşmeyeceğine bir modelin değil bir betiğin karar verdiği bir Claude Code eklentisi.
 
-[English](README.md) · MIT · `0.6.1` · test takımı Linux, macOS ve Windows'ta geçiyor
+[English](README.md) · MIT · `0.6.2` · test takımı Linux, macOS ve Windows'ta geçiyor
 
 Bir **şef** planlar ve karar verir. **Yazıcıların** her biri kendi dosyalarının sahibidir. **Diğer firmadan bir inceleyici** (Claude'un işini Codex, Codex'in işini Claude) hata arar. Küçük bir **doğrulayıcı** testleri çalıştırır. Bir ajanın "bitti"si, ancak çalıştırdığı komutlar ve çıkış kodlarıyla birlikte sayılır.
 
@@ -60,7 +60,7 @@ flowchart LR
     G --> M([Birleşti, ölçüldü,<br/>denemeye hazır])
 ```
 
-1. **Kapsam.** Şef neyin zaten var olduğuna bakar ve size yalnızca yönü değiştiren soruları sorar.
+1. **Kapsam.** Şef neyin zaten var olduğuna bakar ve size yalnızca yönü değiştiren soruları sorar; ayrıca her işin başında bir kez ne sıklıkla danışacağını sorar: `auto` (sona kadar kendisi yapar), `checkpoints` (planı onaylarsınız, her parça birleşince kısa ilerleme notu ve açık kararlar gelir) ya da `ask` (her kararda sorar).
 2. **Bölme.** İş bir panoda (`.orkestra/<iş>/board.md`, git'e girmez) parçalara ayrılır. Her parça kendi dosyalarının sahibidir; paralel yazıcılar asla aynı dosyaya dokunmaz.
 3. **Yazma.** Her parça onu bitirebilecek en ucuz araca gider: geniş ya da görsel işler Codex'e, bitirmek için çalıştırılması gereken kod bir Claude işçiye, mekanik düzenlemeler Haiku'ya.
 4. **Doğrulama.** Küçük bir model kabul komutunu çalıştırır. Yazıcı kendi işini onaylayamaz.
@@ -147,7 +147,7 @@ Panoda bir parçanın kanıtı şöyle görünür:
 
 ## Durum
 
-`0.6.1`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
+`0.6.2`. Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısının bugünkü hâli (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) daha yeni; biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
 
 ## Olası sonraki adımlar
 

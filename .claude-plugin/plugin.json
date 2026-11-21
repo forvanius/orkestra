@@ -1,7 +1,7 @@
 {
   "name": "orkestra",
   "displayName": "Orkestra",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Cost-aware multi-agent orchestration for Claude Code: a conductor plans and decides, each part goes to the right model, the other vendor reviews it, cheap agents verify. Evidence-based verdicts, anti-Goodhart rules, token measurement.",
   "author": {
     "name": "forvanius"

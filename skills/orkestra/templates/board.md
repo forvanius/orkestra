@@ -3,6 +3,10 @@
 Single source of truth for this job — required in every orkestra job. Only the conductor edits it (≤1 line per agent report).
 A new session reads this file first, then only the reports of open parts.
 
+## Working mode (ask the user once, before the first brief; a project's usual preference is only the suggested answer)
+- Mode:
+`auto` = run to the end, stop only for decisions that change design direction. `checkpoints` = the user approves the plan; after each merged part, 2–3 lines of progress and the open decisions, then wait. `ask` = ask at every decision. A one-word reply ("go on") answers that question only; only the user changes the mode.
+
 ## Design note (only for ambiguous jobs — needs user approval before any brief)
 - Goal:
 - Chosen approach:            Rejected alternative (one line):

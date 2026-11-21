@@ -73,3 +73,47 @@ test('the board template parses and Turkish states work', () => {
   const tr = '| Parça | paralel | yazma yüzeyi |\n|---|---|---|\n| A | evet | a |\n| B | sonra: A | b |\n\n| Parça | sahip | durum | kanıt |\n|---|---|---|---|\n| A | x | birleşti |  |\n| B | x | hazır |  |\n';
   assert.deepStrictEqual(plan(tr).start, ['B']);
 });
+
+const { workingMode } = require('../skills/orkestra/next_parts.js');
+const withMode = (value, body) => ['# Board: x', '', '## Working mode (ask the user once)', `- Mode: ${value}`, '`auto` = run to the end.', '', body].join('\n');
+const simple = () => board([['A', 'yes', 'a.js']], [['A', 'ready']]);
+
+test('working mode: an empty Mode on the board stops dispatch until the user is asked', () => {
+  const r = plan(withMode('', simple()));
+  assert.strictEqual(r.code, 1);
+  assert.match(r.errors.join('\n'), /working mode not set/);
+  assert.strictEqual(r.mode, undefined);
+});
+
+test('working mode: a value that is not auto / checkpoints / ask is not a mode', () => {
+  assert.strictEqual(plan(withMode('whatever', simple())).code, 1);
+});
+
+test('working mode: a set mode is reported on every run and does not block', () => {
+  for (const [value, mode] of [['checkpoints', 'checkpoints'], ['`auto`', 'auto'], ['ask — every decision', 'ask'], ['kontrol noktaları', 'checkpoints'], ['otomatik', 'auto'], ['sor', 'ask']]) {
+    const r = plan(withMode(value, simple()));
+    assert.strictEqual(r.code, 0, value);
+    assert.strictEqual(r.mode, mode, value);
+    assert.deepStrictEqual(r.start, ['A']);
+  }
+});
+
+test('working mode: a Turkish section header is read too', () => {
+  const text = ['## Çalışma tarzı', '- Tarz: kontrol', '', simple()].join('\n');
+  assert.strictEqual(workingMode(text), 'checkpoints');
+});
+
+test('working mode: the explanation line under an empty Mode is not read as the mode', () => {
+  assert.strictEqual(workingMode(withMode('', '')), '');
+});
+
+test('working mode: a board from before the section existed is not blocked', () => {
+  const r = plan(simple());
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.mode, undefined);
+});
+
+test('working mode: the board template has the section with Mode empty, so a new job must ask', () => {
+  const tpl = fs.readFileSync(path.join(__dirname, '../skills/orkestra/templates/board.md'), 'utf8');
+  assert.strictEqual(workingMode(tpl), '');
+});

@@ -4,7 +4,8 @@
 //
 //   node next_parts.js <board.md>
 //
-// Exit: 0 = ok, 1 = a write-surface conflict, a risky part on a cheap model, a bad dependency or a deadlock, 2 = no usable board.
+// Exit: 0 = ok, 1 = a write-surface conflict, a risky part on a cheap model, a bad dependency, a deadlock or an unset working mode,
+// 2 = no usable board. Output carries `mode` (auto / checkpoints / ask) so every run reminds the conductor how often to ask.
 // A glob counts as its folder, so `src/*.js` and `src/a.py` are reported as overlapping: fix by being exact.
 const fs = require('fs');
 const { locateTable, cells } = require('./board_check.js');
@@ -12,6 +13,18 @@ const { locateTable, cells } = require('./board_check.js');
 const MERGED = /^(merged|birleşti|birlesti)$/i, ACTIVE = /^(running|in-review|çalışıyor|calisiyor|incelemede)$/i;
 const READY = /^(ready|hazır|hazir)$/i, BLOCKED = /^(blocked|engelli)$/i;
 const LOW_RISK = /^(low|düşük|dusuk)\b/i, CHEAP_MODEL = /haiku|light|hafif/i;   // risk comes before cost
+const MODES = [['auto', /^(auto|otomatik)\b/i], ['checkpoints', /^(checkpoints?|kontrol noktalar[ıi]|kontrol)\b/i], ['ask', /^(ask|sor)\b/i]];
+
+// How often the user wants to be asked. undefined = the board has no Working mode section (a board from before 0.6.2);
+// '' = the section is there but not filled in or not one of auto / checkpoints / ask.
+function workingMode(text) {
+  const m = text.match(/^##[ \t]*(?:working mode|çalışma tarzı|calisma tarzi)(?![\wÀ-ɏ])[^\n]*\n([\s\S]*?)(?=^##[ \t]|$(?![\s\S]))/im);
+  if (!m) return undefined;
+  const line = m[1].match(/^[ \t]*-?[ \t]*(?:mode|tarz)[ \t]*:[ \t]*`?([^`\n]*)/im);
+  const value = line ? line[1].trim() : '';
+  const hit = MODES.find(([, re]) => re.test(value));
+  return hit ? hit[0] : '';
+}
 
 function laneMatrix(text) {
   const lines = text.split(/\r?\n/);
@@ -51,6 +64,8 @@ function plan(text) {
   if (!lane || !table) return { code: 2, errors: ['the board needs a lane matrix and a parts table'] };
   const state = Object.fromEntries(table.rows.map(r => [r.part, r.state]));
   const errors = [], conflicts = [], byName = Object.fromEntries(lane.map(l => [l.part, l]));
+  const mode = workingMode(text);
+  if (mode === '') errors.push('working mode not set: ask the user once (auto / checkpoints / ask) and write it under Working mode');
   for (const l of lane) {
     if (!(l.part in state)) errors.push(`part ${l.part} is in the lane matrix but not in the parts table`);
     if (!l.surface.length) errors.push(`part ${l.part} has no write surface`);
@@ -87,7 +102,9 @@ function plan(text) {
   }
   const stuck = !start.length && !running.length && waiting.length > 0 && !blocked.length;
   if (stuck) errors.push(`nothing can start: ${waiting.map(w => `${w.part} ${w.why}`).join('; ')}`);
-  return { code: errors.length || conflicts.length ? 1 : 0, start, running, waiting, blocked, conflicts, errors };
+  const out = { code: errors.length || conflicts.length ? 1 : 0, start, running, waiting, blocked, conflicts, errors };
+  if (mode) out.mode = mode;
+  return out;
 }
 
 if (require.main === module) {
@@ -97,4 +114,4 @@ if (require.main === module) {
   process.exit(code);
 }
 
-module.exports = { plan, laneMatrix, overlap };
+module.exports = { plan, laneMatrix, overlap, workingMode };

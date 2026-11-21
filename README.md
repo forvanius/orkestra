@@ -2,7 +2,7 @@
 
 A Claude Code plugin that splits a coding job across several agents, has a model from another vendor review each change, and lets a script — not a model — decide whether the change is merged.
 
-[Türkçe](README.tr.md) · MIT · `0.6.1` · test suite passes on Linux, macOS and Windows
+[Türkçe](README.tr.md) · MIT · `0.6.2` · test suite passes on Linux, macOS and Windows
 
 A **conductor** plans and decides. **Writers** each own their own files. A **reviewer from the other vendor** (Codex reviews Claude's work, Claude reviews Codex's) looks for bugs. A small **verifier** runs the tests. An agent's "done" counts only with the commands it ran and their exit codes.
 
@@ -60,7 +60,7 @@ flowchart LR
     G --> M([Merged, measured,<br/>ready to try])
 ```
 
-1. **Scope.** The conductor checks what already exists and asks you only what changes the direction.
+1. **Scope.** The conductor checks what already exists and asks you only what changes the direction, plus once per job how often to check in: `auto` (run to the end), `checkpoints` (approve the plan, then a short progress note and the open decisions after each merged part) or `ask` (every decision).
 2. **Split.** The job becomes parts on a board (`.orkestra/<job>/board.md`, git-ignored). Each part owns its files, so parallel writers never touch the same file.
 3. **Write.** Each part goes to the cheapest instrument that can finish it: Codex for wide or visual work, a Claude worker for code that must be run to be finished, Haiku for mechanical edits.
 4. **Verify.** A small model runs the acceptance command. A writer can't approve its own work.
@@ -147,7 +147,7 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 
 ## Status
 
-`0.6.1`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
+`0.6.2`. In use on the author's projects since October 2026. The merge gate in its current form (reviews bound to commits, two reviews for high-risk parts, the red check) is newer and has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
 
 ## Possible next steps
 
