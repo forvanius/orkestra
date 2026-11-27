@@ -153,3 +153,23 @@ test('acceptedExtra reads the reason up to a checked= note, and needs the exact 
   assert.strictEqual(acceptedExtra('review=r.json accepted-extrass=kept'), null);
   assert.strictEqual(acceptedExtra('review=r.json accepted-extra==kept'), null);
 });
+
+test('once discovery ran, the Research Decision must be filled in', () => {
+  const row = '| A | codex | ready | a.js | t |  |  |';
+  const withResearch = research => { const b = board([row]); const t = fs.readFileSync(b, 'utf8'); fs.writeFileSync(b, t.replace('## Parts\n', research + '\n## Parts\n')); return b; };
+  const template = '## Research (design note or 3+ parts)\n- Discovery:\n- Summary:\n- Decision:\n\nDiscovery: `ran (research.txt)` or `skipped — <reason>`. Decision: `build | reuse <x> | adapt <x> — why`.\n';
+  assert.strictEqual(boardCheck(withResearch(template)).code, 0);                                  // untouched template: discovery not claimed
+  assert.strictEqual(boardCheck(withResearch(template.replace('- Discovery:', '- Discovery: skipped — internal refactor'))).code, 0);
+  const ran = template.replace('- Discovery:', '- Discovery: ran (research.txt, research-codex.txt)');
+  const empty = boardCheck(withResearch(ran));
+  assert.strictEqual(empty.code, 1);
+  assert.match(empty.errors[0], /discovery ran but Decision is empty/);
+  assert.strictEqual(boardCheck(withResearch(ran.replace('- Decision:', '- Decision: build | reuse <x> | adapt <x> — why'))).code, 1);   // the placeholder is not a decision
+  assert.strictEqual(boardCheck(withResearch(ran.replace('- Decision:', '- Decision: build on node:util parseArgs — no dependencies allowed'))).code, 0);
+  const tr = '## Araştırma\n- Keşif: yapıldı (research.txt)\n- Karar:\n';
+  assert.strictEqual(boardCheck(withResearch(tr)).code, 1);
+  assert.strictEqual(boardCheck(withResearch(tr.replace('- Karar:', '- Karar: hazırını kullan — lisans uygun'))).code, 0);
+  const { handoffCheck } = require('../skills/orkestra/board_check.js');
+  const b = withResearch(ran); fs.appendFileSync(b, '\n## Next session\n- Next action: x\n- Open decisions: none\n- Read first: r.txt\n');
+  assert.match(handoffCheck(b).errors.join('\n'), /Decision is empty/);                            // a handoff is held too
+});

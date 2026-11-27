@@ -15,7 +15,7 @@ are in [measurements.md](measurements.md). `<skill>` stands for the skill direct
 - There is already a `storage.ts` helper wrapping IndexedDB → reuse it.
 - Asked once: working mode → `checkpoints`; real-world test → "on my phone, flight mode".
 - "Offline reading" has two readings (cache on open vs. explicit download) → **design note** first.
-- Discovery: the plan adds no library or service, it reuses `storage.ts` → `Discovery skipped (reason): no outside dependency, reuses storage.ts`. Had it needed, say, a service-worker library, a researcher would have listed the candidates with release dates, licences and fit before the design note.
+- Discovery: the plan adds no library or service, it reuses `storage.ts` → `Discovery: skipped — no outside dependency, reuses storage.ts`. Had it needed, say, a service-worker library, a researcher would have listed the candidates with release dates, licences and fit before the design note.
 
 `node <skill>/new_job.js --repo . offline` creates `<job>/board.md` from the template.
 

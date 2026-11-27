@@ -288,6 +288,10 @@ test('discovery: 3+ parts need a researcher, a Codex --search run or a written s
   assert.deepStrictEqual(warns([board('- Discovery skipped (reason): internal refactor, no outside dependency\n'), ...parts]), []);
   assert.deepStrictEqual(warns([board('- Keşif atlandı (gerekçe): repo içi iş\n'), ...parts]), []);
   assert.strictEqual(warns([board('- Discovery skipped (reason):\n- Summary\n'), ...parts]).length, 1);         // the template's empty line
+  assert.deepStrictEqual(warns([board('- Discovery: skipped — internal refactor\n'), ...parts]), []);            // the current board line
+  assert.deepStrictEqual(warns([board('- Keşif: atlandı - repo içi iş\n'), ...parts]), []);
+  assert.strictEqual(warns([board('- Discovery:\n- Summary:\n- Decision:\n\nDiscovery: `ran (research.txt)` or `skipped — <reason>`.\n'), ...parts]).length, 1);   // the template stays a WARN
+  assert.strictEqual(warns([board('- Discovery: ran (research.txt)\n'), ...parts]).length, 1);                  // a claim is not a run
   assert.deepStrictEqual(warns(w(1)), []);                                                                      // small jobs are not asked
   const { facts } = audit(fixture([...parts, search, claude]), ['s1'], { codexModel: 'gpt-x' });
   assert.deepStrictEqual(facts.discovery, { runs: 2, skipped: false });

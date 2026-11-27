@@ -31,6 +31,7 @@ CODEX LINE: <the full guarded codex command with resolved paths; "none" for a to
 MODE: facts | discovery — <discovery: references/research.md, the four standard questions first>
 QUESTIONS: <facts: at most 5; discovery: at most 8; each answerable from a dated source>; result → `.orkestra/<job>/research.txt` in your working tree; TIME LIMIT 15 min (discovery 25 min)
 CONSTRAINTS FOR FIT: <discovery only: language, runtime, dependency and licence limits, platform — from AGENTS.md; never the project's name or private paths>; a source older than 12 months is `stale`
+# Codex researcher (codex --search exec, read-only): it writes no file — replace the result line with "print research.txt as your final answer"; the conductor saves it with `-o <job dir>/research-codex.txt`. YOUR FILES: none.
 # Verifier at close only (references/close.md):
 SMOKE: <the command from the board's Close section>, once, on the merged HEAD, through HEAVY RUNS
 PRESENT: capture <changed screens or pages> at desktop and mobile width into <job dir>; write <job dir>/present.md with OPEN: <one command or URL> · TRY: <3–5 items from the acceptance list> · UNFINISHED: <skipped checks, open polish, Rulings>

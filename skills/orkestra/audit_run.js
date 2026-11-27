@@ -33,7 +33,8 @@ const OUR_ADVISOR = /^(orkestra:)?advisor$/i;
 const OUR_RESEARCHER = /^(orkestra:)?researcher$/i;
 // A filled-in reason on the board; the template's own empty line doesn't count.
 const CONSULT_SKIPPED = /(?:consultation skipped \(reason\)|danışma atlandı \(gerekçe\)):[ \t]*[^\s|]/i;
-const DISCOVERY_SKIPPED = /(?:discovery skipped \(reason\)|keşif atlandı \(gerekçe\)):[ \t]*[^\s|]/i;
+// `Discovery: skipped — <reason>` (0.6.4 boards wrote `Discovery skipped (reason): <reason>`); `<reason>` itself doesn't count.
+const DISCOVERY_SKIPPED = /(?:discovery skipped \(reason\)|keşif atlandı \(gerekçe\)):[ \t]*[^\s|]|^[ \t]*-?[ \t]*(?:discovery|keşif)[ \t]*:[ \t]*(?:skipped|atlandı)[ \t]*[—–-]+[ \t]*[^\s|<]/im;
 // The conductor reading files, logs or diffs through the shell (rule 1). Writing a file by heredoc is not reading.
 const SHELL_READ = /\b(cat|Get-Content|tail|head|Select-String|sed|grep|rg)\b|\bgit\s+(show|diff|log)\b/;
 
@@ -476,7 +477,7 @@ function audit(proj, ids, opts = {}) {
     ? `the plan was consulted with only one advisor (${consultsCodex ? 'Codex' : 'Claude'}) — two vendors, neither seeing the other`
     : `${writes + workers} parts were written without consulting advisors and no skip reason is on the board`);
   if (writes + workers >= 3 && !discoverySkipped && !research) add('WARN', 'discovery',
-    `${writes + workers} parts were written without a discovery run (researcher or Codex --search) and no "Discovery skipped (reason):" on the board`);
+    `${writes + workers} parts were written without a discovery run (researcher or Codex --search) and no "Discovery: skipped — <reason>" on the board`);
   // The rule is "2+ parts wrote code": when the board's lane matrix says which parts are code, count those.
   const codeParts = codePartsOnBoard([...boardPaths]), written = codeParts == null ? writes + workers : codeParts;
   if (written >= 2 && !finalReviews) add('WARN', 'final-review', `${written} ${codeParts == null ? 'parts were written' : 'parts wrote code'} but no final review looked at how they fit together`);

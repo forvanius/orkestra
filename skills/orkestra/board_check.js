@@ -133,6 +133,16 @@ function mergedCommitError(repo, row) {
 // focus: the part being closed. A review problem of another merged part is then reported under `others`
 // instead of holding this close (one hand-merged part must not lock every later part); their commits must
 // still be on HEAD. Without focus every merged part is checked in full, as the audit and handoff need.
+// Discovery ran but no build/reuse decision was written: the design note and every brief would rest on
+// nothing. Boards without a Research section (before 0.6.4) and skipped discovery are not asked.
+function researchDecisionError(text) {
+  const section = (text.match(/^##[ \t]*(?:research|araştırma)\b[^\n]*\n([\s\S]*?)(?=^##[ \t]|(?![\s\S]))/im) || [])[1];
+  if (!section || !/^[ \t]*-?[ \t]*(?:discovery|keşif)[ \t]*:[ \t]*(?:ran|yapıldı)(?=[\s(]|$)/im.test(section)) return null;
+  const decision = (section.match(/^[ \t]*-?[ \t]*(?:decision|karar)[ \t]*:[ \t]*(.*)$/im) || [])[1] || '';
+  if (decision.trim() && !/<x>/.test(decision)) return null;
+  return 'Research: discovery ran but Decision is empty — write "build | reuse <x> | adapt <x> — why"';
+}
+
 function boardCheck(boardFile, mergePart, repo = null, text = null, focus = null) {
   if (text === null && !fs.existsSync(boardFile)) return { code: 2, errors: [`board not found: ${boardFile}`], skips: [] };
   if (text === null) text = fs.readFileSync(boardFile, 'utf8');
@@ -141,6 +151,8 @@ function boardCheck(boardFile, mergePart, repo = null, text = null, focus = null
   const errors = [], skips = [], others = [];
   if (repo && git(repo, ['rev-parse', '--git-dir']).status !== 0) return { code: 2, errors: [`not a git repo: ${repo} (pass --repo)`], skips: [] };
   if (mergePart && !rows.some(r => r.part === mergePart)) errors.push(`part "${mergePart}" is not on the board`);
+  const research = researchDecisionError(text);
+  if (research) errors.push(research);
   for (const row of rows) {
     if (!MERGED.test(row.state) && row.part !== mergePart) continue;
     const r = reviewOf(row, path.dirname(boardFile));
