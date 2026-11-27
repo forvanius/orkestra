@@ -26,7 +26,7 @@ The researcher writes `research.txt` with the answers and this table. It states 
 - `unconfirmed` = undated, or only third-party posts say it. A stale or unconfirmed fact the plan rests on goes to the user before the plan is approved.
 
 ## Two vendors for critical work
-For `high` risk work, or when the build-vs-reuse choice decides most of the job, run the same questions twice without either seeing the other: `orkestra:researcher` and Codex with live web search (`codex --search exec … -s read-only`, guarded like every Codex call; `--search` goes before `exec`). Where they disagree, write both on the board and say which source wins and why. Agreement from two vendors is the cheap check against a stale or wrong fact.
+For `high` risk work, or when the build-vs-reuse choice decides most of the job, run the same questions twice without either seeing the other: `orkestra:researcher` and Codex with live web search (`codex --search exec … -s read-only -o <job dir>/research-codex.txt - < brief`, guarded like every Codex call; `--search` goes before `exec`, after it Codex exits with "unexpected argument"). Read-only Codex writes no file: its brief says "print research.txt as your final answer", and `-o` saves that answer. Its log shows each search as a `web search:` line. Where they disagree, write both on the board and say which source wins and why. Agreement from two vendors is the cheap check against a stale or wrong fact.
 
 ## After the result
 - The conductor (not the researcher) decides build vs reuse and writes it on the board's **Research** section: 3–5 lines from the table, then `Decision: build | reuse <x> | adapt <x> — why`. The design note's chosen approach and rejected alternative rest on it.

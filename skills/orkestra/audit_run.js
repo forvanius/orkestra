@@ -175,8 +175,12 @@ function parseCodex(cmd) {
   const s = cmd.match(/(?:^|\s)(?:-s|--sandbox)[\s=]+([\w-]+)/);
   const ef = cmd.match(/model_reasoning_effort\s*=\s*"?(\w+)/);
   const sandbox = s ? s[1] : null, schema = /--output-schema/.test(cmd), image = /(?:^|\s)(?:-i|--image)\s/.test(cmd);
-  const role = sandbox === 'read-only' ? (schema ? 'reviewer' : /(?:^|\s)--search\b/.test(cmd) ? 'research' : /consult/i.test(cmd) ? 'consult' : 'diagnosis') : image ? 'image' : sandbox === 'workspace-write' ? 'writer' : 'other';
-  return { model: m ? m[2] : null, effort: ef ? ef[1] : null, sandbox, schema, role };
+  // `--search` is a global flag: before `exec` it searches; after it Codex exits with "unexpected argument".
+  const at = re => { const i = cmd.search(re); return i < 0 ? Infinity : i; };
+  const searchAt = at(/(?:^|\s)--search\b/), execAt = at(/(?:^|\s)exec\b/);
+  const search = searchAt < execAt, misplacedSearch = searchAt !== Infinity && !search;
+  const role = sandbox === 'read-only' ? (schema ? 'reviewer' : search ? 'research' : /consult/i.test(cmd) ? 'consult' : 'diagnosis') : image ? 'image' : sandbox === 'workspace-write' ? 'writer' : 'other';
+  return { model: m ? m[2] : null, effort: ef ? ef[1] : null, sandbox, schema, role, ...(misplacedSearch ? { misplacedSearch } : {}) };
 }
 
 function codexTokens(text) {
@@ -354,6 +358,7 @@ function audit(proj, ids, opts = {}) {
     else if (expModel && c.model !== expModel && c.model !== opts.codexModelLight && c.model !== opts.codexModelDesign) add('WARN', 'codex-model', `codex ${c.role} used "${c.model}", expected "${expModel}"`);
     if (!c.effort) add('WARN', 'codex-effort', `codex ${c.role} call without explicit effort`);
     if (c.role === 'reviewer' && !c.schema) add('WARN', 'review-schema', 'read-only review without --output-schema');
+    if (c.misplacedSearch) add('WARN', 'codex-search', '`--search` after `exec`: Codex rejects it, so this was no web search; write `codex --search exec`');
     if (/danger/.test(c.sandbox || '')) add('FAIL', 'codex-sandbox', `codex ran with sandbox "${c.sandbox}"`);
     if (c.minutes && c.minutes > 25 && c.role === 'writer') add('WARN', 'time-limit', `codex writer ran ${c.minutes} min (limit ~25)`);
   };

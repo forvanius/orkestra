@@ -292,6 +292,13 @@ test('discovery: 3+ parts need a researcher, a Codex --search run or a written s
   const { facts } = audit(fixture([...parts, search, claude]), ['s1'], { codexModel: 'gpt-x' });
   assert.deepStrictEqual(facts.discovery, { runs: 2, skipped: false });
   assert.strictEqual(facts.reviews, 0);                                                                         // research is not a code review
+
+  // Codex 0.170 rejects `exec --search` ("unexpected argument"): no search ran, so it is no discovery run.
+  const late = use(12, 'r3', 'Bash', { command: 'node guarded.js codex --minutes 25 -- codex exec --search -m gpt-x -c model_reasoning_effort=medium -s read-only - < research.txt' });
+  assert.notStrictEqual(parseCodex(late.message.content[0].input.command).role, 'research');
+  assert.strictEqual(warns([...parts, late]).length, 1);
+  const lateFindings = audit(fixture([...parts, late]), ['s1'], { codexModel: 'gpt-x' }).findings.filter(f => f.rule === 'codex-search');
+  assert.match(lateFindings[0].msg, /--search` after `exec`/);
 });
 
 test('hierarchy is audited: a section lead\'s Codex runs count, one review covers its section', () => {
