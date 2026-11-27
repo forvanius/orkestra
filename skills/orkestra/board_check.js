@@ -157,6 +157,8 @@ function boardCheck(boardFile, mergePart, repo = null, text = null, focus = null
 const KNOWN_STATE = /^(ready|running|in-review|blocked|merged|hazır|hazir|çalışıyor|calisiyor|incelemede|engelli|birleşti|birlesti)$/i;
 const RUNNING = /^(running|çalışıyor|calisiyor)$/i;
 const NEXT_FIELDS = [['Next action', /^[ \t]*-?[ \t]*(?:next action|sıradaki eylem)[ \t]*:[ \t]*(.*)$/im], ['Open decisions', /^[ \t]*-?[ \t]*(?:open decisions|açık kararlar)[ \t]*:[ \t]*(.*)$/im], ['Read first', /^[ \t]*-?[ \t]*(?:read first|önce oku)[ \t]*:[ \t]*(.*)$/im]];
+// Boards made before this field existed have no such line; when it is there it must be filled.
+const STILL_OPEN = /^[ \t]*-?[ \t]*(?:still open|hâlâ açık|hala açık|açık kalan)[^:\n]*:[ \t]*(.*)$/im;
 
 // Can a new session pick this up? A handoff that loses the context costs more than it saves.
 function handoffCheck(boardFile, repo = null) {
@@ -165,6 +167,8 @@ function handoffCheck(boardFile, repo = null) {
   const text = fs.readFileSync(boardFile, 'utf8'), errors = [...base.errors];
   if (!/^##[ \t]*(next session|sonraki oturum)/im.test(text)) errors.push('no Next session section on the board');
   else for (const [name, re] of NEXT_FIELDS) { const m = text.match(re); if (!m || !m[1].trim()) errors.push(`Next session: "${name}" is empty (write "none" if there is nothing)`); }
+  const open = text.match(STILL_OPEN);
+  if (open && !open[1].trim()) errors.push('Next session: "Still open from the original request" is empty (write "none" if there is nothing)');
   for (const row of partsTable(text)) {
     if (!KNOWN_STATE.test(row.state)) errors.push(`part ${row.part}: state "${row.state}" is not current`);
     else if (RUNNING.test(row.state)) errors.push(`part ${row.part} is still running: let it finish or record where it stopped`);

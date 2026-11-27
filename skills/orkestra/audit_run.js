@@ -17,7 +17,8 @@ const MAX_PARALLEL_CLAUDE = 3;     // rule 6
 const SECRET = /(sk-[A-Za-z0-9_-]{20,}|AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|xox[abprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|\b[A-Z0-9_]*(?:API_KEY|TOKEN|PASSWORD|SECRET)\s*[=:]\s*["']?[A-Za-z0-9_\-+]{16,})/;
 const TEST_PATH = /(^|[\\/])(tests?|__tests__|fixtures?|mocks?|spec)[\\/]|[._-](test|spec|mock|fixture)s?\.\w+$/i;
 // A real invocation starts a command segment; `codex exec --help` and mentions inside other commands don't count.
-const CODEX_CALL = /(?:(?:^|[;&|(\n]|=\s*)\s*|guarded\.js["']?\s+codex\b[^\n;&|]*?\s--\s+)codex(?:\.cmd|\.ps1)?\s+exec\b(?![^\n;&|]*\s--?(?:help|h|version)\b)/;
+// `codex --search exec` (discovery with live web search) is the same call with a global flag before exec.
+const CODEX_CALL = /(?:(?:^|[;&|(\n]|=\s*)\s*|guarded\.js["']?\s+codex\b[^\n;&|]*?\s--\s+)codex(?:\.cmd|\.ps1)?(?:\s+--search)?\s+exec\b(?![^\n;&|]*\s--?(?:help|h|version)\b)/;
 const RISKY_GIT = /git\s+(reset\s+--hard|clean\s+-[a-z]*f|push\s+(-f\b|--force)|checkout\s+--\s|branch\s+-D)/;
 // Reading a background job's log/output by hand instead of waiting for its notice: a wait loop always
 // counts; a single read counts only before that job's completion notice (reading the result after is fine).
@@ -29,8 +30,10 @@ const HEAVY = /(?:^|[;&|(\n]\s*)(?:\$env:\S+\s*;\s*|[A-Z_]+=\S+\s+)*(?:python3?|
 const LOW_PRIO = /guarded\.js["']?\s+heavy\b|BelowNormal|Idle|PriorityClass|-Priority\b|\bnice\s|start\s+\/(?:low|belownormal)/i;
 const OUR_REVIEWER = /^(orkestra:)?reviewer$/i;    // not impeccable-finish-reviewer and the like
 const OUR_ADVISOR = /^(orkestra:)?advisor$/i;
+const OUR_RESEARCHER = /^(orkestra:)?researcher$/i;
 // A filled-in reason on the board; the template's own empty line doesn't count.
 const CONSULT_SKIPPED = /(?:consultation skipped \(reason\)|danışma atlandı \(gerekçe\)):[ \t]*[^\s|]/i;
+const DISCOVERY_SKIPPED = /(?:discovery skipped \(reason\)|keşif atlandı \(gerekçe\)):[ \t]*[^\s|]/i;
 // The conductor reading files, logs or diffs through the shell (rule 1). Writing a file by heredoc is not reading.
 const SHELL_READ = /\b(cat|Get-Content|tail|head|Select-String|sed|grep|rg)\b|\bgit\s+(show|diff|log)\b/;
 
@@ -172,7 +175,7 @@ function parseCodex(cmd) {
   const s = cmd.match(/(?:^|\s)(?:-s|--sandbox)[\s=]+([\w-]+)/);
   const ef = cmd.match(/model_reasoning_effort\s*=\s*"?(\w+)/);
   const sandbox = s ? s[1] : null, schema = /--output-schema/.test(cmd), image = /(?:^|\s)(?:-i|--image)\s/.test(cmd);
-  const role = sandbox === 'read-only' ? (schema ? 'reviewer' : /consult/i.test(cmd) ? 'consult' : 'diagnosis') : image ? 'image' : sandbox === 'workspace-write' ? 'writer' : 'other';
+  const role = sandbox === 'read-only' ? (schema ? 'reviewer' : /(?:^|\s)--search\b/.test(cmd) ? 'research' : /consult/i.test(cmd) ? 'consult' : 'diagnosis') : image ? 'image' : sandbox === 'workspace-write' ? 'writer' : 'other';
   return { model: m ? m[2] : null, effort: ef ? ef[1] : null, sandbox, schema, role };
 }
 
@@ -317,7 +320,7 @@ function audit(proj, ids, opts = {}) {
   const expModel = opts.codexModel || null;
   let mainCr = 0, subCr = 0, first = null, last = null, maxCtx = 0, maxGrowth = 0, overCtx = 0;
   const efforts = {}, images = [], secrets = [], risky = [], bgIntervals = [], subIntervals = [];
-  let consultsCodex = 0, consultsClaude = 0, consultSkipped = false;
+  let consultsCodex = 0, consultsClaude = 0, consultSkipped = false, research = 0, discoverySkipped = false;
   let reviews = 0, claudeReviews = 0, gates = 0, revises = 0, boardWrites = 0, boardChecks = 0, designNote = false, polls = 0, heavy = 0, heavyNormal = 0, shellCalls = 0, shellReads = 0;
   const scanCmd = (u, files) => { const cmd = String(u.input.command || ''); if (isPoll(u, files)) polls++; if (isHeavy(cmd)) { heavy++; if (!LOW_PRIO.test(cmd)) heavyNormal++; } };
   // A session continued after its context filled up starts with a copy of the previous one:
@@ -345,6 +348,7 @@ function audit(proj, ids, opts = {}) {
     if (!/guarded\.js/.test(cmd)) unguarded++;
     if (c.role === 'reviewer') { reviews++; if (/review-final/.test(cmd)) finalReviews++; }
     if (c.role === 'consult') consultsCodex++;
+    if (c.role === 'research') research++;
     if (!c.model) add('FAIL', 'codex-model', `codex ${c.role} call without -m`);
     else if (/[$<{]/.test(c.model)) add('FAIL', 'codex-model', `model placeholder not substituted: "${c.model}"`);
     else if (expModel && c.model !== expModel && c.model !== opts.codexModelLight && c.model !== opts.codexModelDesign) add('WARN', 'codex-model', `codex ${c.role} used "${c.model}", expected "${expModel}"`);
@@ -383,6 +387,7 @@ function audit(proj, ids, opts = {}) {
       if (/^(Write|Edit)$/.test(u.name) && /(board|pano)\.md$/i.test(u.input.file_path || '')) {
         boardWrites++; boardPaths.add(u.input.file_path); if (/^[ \t]*-[ \t]*(goal|hedef|amaç)[ \t]*:[ \t]*\S/im.test(String(u.input.content || u.input.new_string || ''))) designNote = true;   // a filled-in Goal, not the template's empty heading
         if (CONSULT_SKIPPED.test(String(u.input.content || u.input.new_string || ''))) consultSkipped = true;
+        if (DISCOVERY_SKIPPED.test(String(u.input.content || u.input.new_string || ''))) discoverySkipped = true;
       }
       if (/^(Agent|Task)$/.test(u.name)) {
         const d = u.input.description || '';
@@ -390,6 +395,7 @@ function audit(proj, ids, opts = {}) {
         if (u.input.model) agentModels[d] = u.input.model;
         if (OUR_REVIEWER.test(u.input.subagent_type || '')) { claudeReviews++; reviews++; if (/final/i.test(d)) finalReviews++; }
         if (OUR_ADVISOR.test(u.input.subagent_type || '')) consultsClaude++;
+        if (OUR_RESEARCHER.test(u.input.subagent_type || '')) research++;
       }
       const cmd = (u.name === 'Bash' || u.name === 'PowerShell') ? String(u.input.command || '') : '';
       if (!cmd) continue;
@@ -464,6 +470,8 @@ function audit(proj, ids, opts = {}) {
   if (writes + workers >= 3 && !consultSkipped && !(consultsCodex && consultsClaude)) add('WARN', 'consult', consultsCodex || consultsClaude
     ? `the plan was consulted with only one advisor (${consultsCodex ? 'Codex' : 'Claude'}) — two vendors, neither seeing the other`
     : `${writes + workers} parts were written without consulting advisors and no skip reason is on the board`);
+  if (writes + workers >= 3 && !discoverySkipped && !research) add('WARN', 'discovery',
+    `${writes + workers} parts were written without a discovery run (researcher or Codex --search) and no "Discovery skipped (reason):" on the board`);
   // The rule is "2+ parts wrote code": when the board's lane matrix says which parts are code, count those.
   const codeParts = codePartsOnBoard([...boardPaths]), written = codeParts == null ? writes + workers : codeParts;
   if (written >= 2 && !finalReviews) add('WARN', 'final-review', `${written} ${codeParts == null ? 'parts were written' : 'parts wrote code'} but no final review looked at how they fit together`);
@@ -490,6 +498,7 @@ function audit(proj, ids, opts = {}) {
   facts.wallMinutes = first ? +mins(first, last).toFixed(1) : 0;
   if (opts.codexHome && first) facts.codexRollouts = codexRollouts(first, last, opts.codexHome);
   facts.consults = { codex: consultsCodex, claude: consultsClaude, skipped: consultSkipped };
+  facts.discovery = { runs: research, skipped: discoverySkipped };
   facts.sectionLeads = sectionLeads; facts.unguarded = unguarded; facts.handoffChecks = handoffChecks; facts.finalReviews = finalReviews;
   facts.reviews = reviews; facts.claudeReviews = claudeReviews; facts.gates = gates; facts.revisesGated = revises; facts.maxParallelClaude = par;
   facts.boardWrites = boardWrites; facts.boardChecks = boardChecks; facts.heavyRuns = heavy; facts.heavyNormal = heavyNormal; facts.designNote = designNote; facts.polls = polls;
@@ -511,7 +520,7 @@ function render({ facts: f, findings }) {
   for (const c of f.codex) L.push(`- ${c.role.padEnd(9)} model=${c.model || '—'} effort=${c.effort || '—'} sandbox=${c.sandbox || '—'}${c.schema ? ' schema' : ''} ${c.minutes != null ? c.minutes + ' min' : '? min'}${c.background ? ' (bg)' : ''}${c.tokens ? ' ' + c.tokens + ' tok' : ''}`);
   L.push(``, `## Claude subagents (max ${f.maxParallelClaude} in parallel; ${f.claudeReviews} Claude reviews)`);
   for (const s of f.subagents) L.push(`- ${s.description} [${s.type}] ${s.model} · ${s.calls} calls · ${s.readsM} M · ${s.minutes} min${s.runs > 1 ? ` in ${s.runs} runs, longest ${s.longestRun}` : ''}`);
-  L.push(``, `## Process`, `- plan consults: Codex ${f.consults.codex}, Claude ${f.consults.claude}${f.consults.skipped ? ' (skipped with a reason)' : ''} · section leads ${f.sectionLeads} · unguarded Codex runs ${f.unguarded} · reviews ${f.reviews} · gated ${f.gates} · REVISE via gate ${f.revisesGated} · board writes ${f.boardWrites} · board checks ${f.boardChecks} · design note ${f.designNote ? 'yes' : 'no'} · log polls ${f.polls} · smoke runs ${f.heavyRuns} (normal priority ${f.heavyNormal})`, ``);
+  L.push(``, `## Process`, `- plan consults: Codex ${f.consults.codex}, Claude ${f.consults.claude}${f.consults.skipped ? ' (skipped with a reason)' : ''} · discovery runs ${f.discovery.runs}${f.discovery.skipped ? ' (skipped with a reason)' : ''} · section leads ${f.sectionLeads} · unguarded Codex runs ${f.unguarded} · reviews ${f.reviews} · gated ${f.gates} · REVISE via gate ${f.revisesGated} · board writes ${f.boardWrites} · board checks ${f.boardChecks} · design note ${f.designNote ? 'yes' : 'no'} · log polls ${f.polls} · smoke runs ${f.heavyRuns} (normal priority ${f.heavyNormal})`, ``);
   L.push(`## Findings`);
   if (!findings.length) L.push('- none');
   for (const x of ['FAIL', 'WARN', 'INFO']) for (const y of findings.filter(z => z.level === x)) L.push(`- **${x}** [${y.rule}] ${y.msg}`);

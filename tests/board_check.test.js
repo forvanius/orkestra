@@ -97,6 +97,18 @@ test('a handoff needs a board a new session can pick up', () => {
   assert.strictEqual(handoffCheck(tr).code, 0);
 });
 
+test('a handoff refuses an empty "Still open" line but accepts boards without one', () => {
+  const { handoffCheck } = require('../skills/orkestra/board_check.js');
+  const withNext = (next) => { const b = board(['| A | codex | ready | a.js | t |  |  |']); fs.appendFileSync(b, next); return b; };
+  const rest = '- Next action: brief part B\n- Open decisions: none\n- Read first: report-A.txt\n';
+  const empty = handoffCheck(withNext('\n## Next session\n- Still open from the original request (name it in every report to the user):\n' + rest));
+  assert.strictEqual(empty.code, 1);
+  assert.match(empty.errors[0], /"Still open from the original request" is empty/);
+  assert.strictEqual(handoffCheck(withNext('\n## Next session\n- Still open from the original request (name it in every report to the user): part C\n' + rest)).code, 0);
+  assert.strictEqual(handoffCheck(withNext('\n## Sonraki oturum\n- Hâlâ açık: yok\n- Sıradaki eylem: B\n- Açık kararlar: yok\n- Önce oku: r.md\n')).code, 0);
+  assert.strictEqual(handoffCheck(withNext('\n## Sonraki oturum\n- Hâlâ açık:\n- Sıradaki eylem: B\n- Açık kararlar: yok\n- Önce oku: r.md\n')).code, 1);
+});
+
 test('Turkish board (pano) works', () => {
   const rows = partsTable('| Parça | sahip | durum (hazır/birleşti) | dosyalar | kabul | commit | kanıt |\n|---|---|---|---|---|---|---|\n| A | codex | birleşti | a | t | 1 | inceleme=skip: yalnız metin |\n');
   assert.deepStrictEqual(rows, [{ part: 'A', state: 'birleşti', evidence: 'inceleme=skip: yalnız metin', commit: '1' }]);

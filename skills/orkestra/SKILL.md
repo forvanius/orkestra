@@ -13,7 +13,7 @@ You are the **conductor**: you split the work, read summaries and decide; others
 - **Use:** several files or parts, parallel work, or work that needs independent review; long jobs where you want to protect the conductor's context.
 - **Don't use:** a single file and a change under ~150 lines, or one well-defined bug fix → do it directly, or one Codex brief + verifier. Even on small jobs the conductor's reading outweighs the workers'.
 - **Don't start in a long hand-worked session:** hand off and open a fresh one (cuts conductor cost ~10×).
-- **Triggered steps (research, design note, consultation, sections, close) run only on their trigger;** otherwise write nothing.
+- **Triggered steps (discovery, design note, consultation, sections, close) run only on their trigger;** otherwise write nothing.
 
 ## Why these rules (history: `${CLAUDE_SKILL_DIR}/references/history.md`, only if a rule is in doubt)
 - The conductor's context is the biggest cost: every call re-reads it.
@@ -73,7 +73,7 @@ Read `${CLAUDE_SKILL_DIR}/references/roles.md` for role boundaries, Codex brief 
 | Verifier | `subagent_type: "orkestra:verifier"` (Haiku) | Import, run short deterministic checks and commit Codex work if permitted. Long runs go to the conductor. Visual approval goes to the designer. |
 | Worker | `subagent_type: "orkestra:worker"` (Sonnet or Haiku) | Sonnet for local debugging or hard multi-file work, Haiku for mechanical parts. |
 | Specialist | the conductor | Worker came back REVISE twice or no root cause: the worker stops and reports, the conductor diagnoses and writes a new brief. Never spawn your strongest model as a subagent. |
-| Independent reviewer | Codex wrote it: `subagent_type: "orkestra:reviewer"`, brief = the review template + the result file path. Claude wrote it: `codex exec -m ${user_config.codex_model} -c model_reasoning_effort=medium -s read-only --output-schema "${CLAUDE_SKILL_DIR}/review-schema.json" -o review-<part>-codex.json` | **Before every merge of a part that wrote code — no exceptions.** Critical/wide diff → both, Codex on `high`. |
+| Independent reviewer | Codex wrote it: `subagent_type: "orkestra:reviewer"`, brief = the review template + the result file path. Claude wrote it: `codex exec -m ${user_config.codex_model} -c model_reasoning_effort=medium -s read-only --output-schema "${CLAUDE_SKILL_DIR}/review-schema.json" -o review-<part>.json` | **Before every merge of a part that wrote code — no exceptions.** Critical/wide diff → both, Codex on `high`, its file `review-<part>-codex.json`. |
 | Diagnosis | Codex read-only, effort medium | "Why?" questions; patch proposal in JSON, someone else applies it. Never apply it blindly. |
 | Simple classification | a script (node/python/git) | Script first; verifier if that's not enough. |
 
@@ -86,7 +86,7 @@ Codex notes: prompt on stdin (`-`), since `-i` is variadic. Outside git add `--s
 1. **Scope** (fast, yourself; a few greps at most): does a system already exist, `git status` (the user's dirty files), is the item still valid. Ask where and how the real-world test happens for this project (device, server, live data, game feel or none). Record the answer on the board. Ask for any other decision needed now.
    **Working mode:** ask once per job unless the request says it: `auto`, `checkpoints` or `ask` (board template). Project memory only suggests the answer. A one-word reply ("go on") answers that question, not the mode.
    **Ambiguous job → design note first.** If the request has more than one reasonable reading or needs a design decision (new mechanic/screen, data format, several viable approaches): write a ≤1-page note on the board — goal, chosen approach + rejected alternative (one line), out of scope, acceptance criteria. Consult first (step 3), then ask the user to approve; don't write briefs before that. Well-defined jobs (a bug fix, a specific file/behaviour) skip this step.
-   **Research — only when the plan rests on an outside fact that may have changed** (a library/API, a platform rule, prices): one `orkestra:researcher`, ≤5 questions, before the design note; an `unconfirmed` finding the plan needs goes to the user.
+   **Discovery — a design note or 3+ parts that depend on anything outside the repo** (library, service, API, platform, a feature others have): before the design note, read `${CLAUDE_SKILL_DIR}/references/research.md` — is it already done, how others do it, what is current, what fits us; you decide build vs reuse on the board. Otherwise `Discovery skipped (reason):`. A single outside fact on a smaller job: one researcher, ≤5 questions. A stale or `unconfirmed` finding the plan needs goes to the user.
 2. **Plan:** parts by file ownership; a role per part from the table; ≤2–3 parallel Claude agents. Image generation / many agents → tell the user the count and get approval (or notify, if memory says so). Put a time limit (~25 min) in every worker brief. Write the lane matrix to the board before starting:
    ```
    Part | parallel? (yes / after: X) | write surface | domain | risk | role | model | reviewer | acceptance (command)

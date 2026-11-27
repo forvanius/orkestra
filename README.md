@@ -2,7 +2,7 @@
 
 A Claude Code plugin that splits a coding job across several agents, has a model from another vendor review each change, and lets a script — not a model — decide whether the change is merged.
 
-[Türkçe](README.tr.md) · MIT · `0.6.3` · test suite passes on Linux, macOS and Windows
+[Türkçe](README.tr.md) · MIT · `0.6.4` · test suite passes on Linux, macOS and Windows
 
 A **conductor** plans and decides. **Writers** each own their own files. A **reviewer from the other vendor** (Codex reviews Claude's work, Claude reviews Codex's) looks for bugs. A small **verifier** runs the tests. An agent's "done" counts only with the commands it ran and their exit codes.
 
@@ -61,6 +61,7 @@ flowchart LR
 ```
 
 1. **Scope.** The conductor checks what already exists and asks you only what changes the direction, plus once per job how often to check in: `auto` (run to the end), `checkpoints` (approve the plan, then a short progress note and the open decisions after each merged part) or `ask` (every decision).
+   On a bigger job that depends on anything outside the repo, a researcher first finds out whether it is already done, how others do it and what is current, with dated sources; the conductor decides build or reuse on the board.
 2. **Split.** The job becomes parts on a board (`.orkestra/<job>/board.md`, git-ignored). Each part owns its files, so parallel writers never touch the same file.
 3. **Write.** Each part goes to the cheapest instrument that can finish it: Codex for wide or visual work, a Claude worker for code that must be run to be finished, Haiku for mechanical edits.
 4. **Verify.** A small model runs the acceptance command. A writer can't approve its own work.
@@ -147,7 +148,7 @@ Set them in `/config` or in `settings.json` under `pluginConfigs["orkestra@orkes
 
 ## Status
 
-`0.6.3`. Codex writes by default, Sonnet workers handle local debugging and hard multi-file changes, and Haiku runs short checks. Background batches report once. You give direction, approve decisions and get a short note for the agreed real-world test. At checkpoints, `usage_sum.js --here --budget <board>` compares Claude reads, conductor reads and elapsed time with the plan. `guarded.js quota` estimates Claude's five-hour usage.
+`0.6.4`. A bigger job that depends on anything outside the repo starts with discovery: is it already done, how others do it, what is current, with dated sources, and a build-or-reuse decision on the board. Codex writes by default, Sonnet workers handle local debugging and hard multi-file changes, and Haiku runs short checks. Background batches report once. You give direction, approve decisions and get a short note for the agreed real-world test. At checkpoints, `usage_sum.js --here --budget <board>` compares Claude reads, conductor reads and elapsed time with the plan. `guarded.js quota` estimates Claude's five-hour usage.
 
 In use on the author's projects since October 2026. The merge gate (reviews bound to commits, two reviews for high-risk parts, the red check) has run in five pilot jobs, one on an unrelated project. Issues and your own numbers (calls, reads per role, bugs found) are welcome.
 

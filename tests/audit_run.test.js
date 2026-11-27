@@ -273,6 +273,27 @@ test('plan consultation: 3+ parts need both advisors or a written skip reason', 
   assert.strictEqual(facts.reviews, 0);                                                                         // a consult is not a code review
 });
 
+test('discovery: 3+ parts need a researcher, a Codex --search run or a written skip reason', () => {
+  const w = i => [use(i, 'w' + i, 'Bash', { command: `codex exec -m gpt-x ${W}` }), res(i + 1, 'w' + i, 'ok')];
+  const parts = [...w(1), ...w(3), ...w(5)];
+  const search = use(10, 'r1', 'Bash', { command: 'node guarded.js codex --minutes 25 -- codex --search exec -m gpt-x -c model_reasoning_effort=medium -s read-only - < research.txt' });
+  const claude = use(11, 'r2', 'Agent', { description: 'discovery', subagent_type: 'orkestra:researcher' });
+  const board = content => use(0, 'b' + content.length, 'Write', { file_path: 'C:/s/job/board.md', content });
+  const warns = lines => audit(fixture(lines), ['s1'], { codexModel: 'gpt-x' }).findings.filter(f => f.rule === 'discovery');
+
+  assert.strictEqual(parseCodex(search.message.content[0].input.command).role, 'research');
+  assert.match(warns(parts)[0].msg, /3 parts .*without a discovery run/);
+  assert.deepStrictEqual(warns([...parts, search]), []);
+  assert.deepStrictEqual(warns([...parts, claude]), []);
+  assert.deepStrictEqual(warns([board('- Discovery skipped (reason): internal refactor, no outside dependency\n'), ...parts]), []);
+  assert.deepStrictEqual(warns([board('- Keşif atlandı (gerekçe): repo içi iş\n'), ...parts]), []);
+  assert.strictEqual(warns([board('- Discovery skipped (reason):\n- Summary\n'), ...parts]).length, 1);         // the template's empty line
+  assert.deepStrictEqual(warns(w(1)), []);                                                                      // small jobs are not asked
+  const { facts } = audit(fixture([...parts, search, claude]), ['s1'], { codexModel: 'gpt-x' });
+  assert.deepStrictEqual(facts.discovery, { runs: 2, skipped: false });
+  assert.strictEqual(facts.reviews, 0);                                                                         // research is not a code review
+});
+
 test('hierarchy is audited: a section lead\'s Codex runs count, one review covers its section', () => {
   const G = 'node guarded.js codex --minutes 25 -- codex exec -m gpt-x';
   const lead = [1, 2, 3, 4].flatMap(i => [use(10 + i, 'lw' + i, 'Bash', { command: `${G} ${W}` }), res(11 + i, 'lw' + i, 'ok')]);

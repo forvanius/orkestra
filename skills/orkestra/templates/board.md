@@ -7,6 +7,11 @@ A new session reads this file first, then only the reports of open parts.
 - Mode:
 `auto` = run to the end, stop only for decisions that change design direction. `checkpoints` = the user approves the plan; after each merged part, 2–3 lines of progress and the open decisions, then wait. `ask` = ask at every decision. A one-word reply ("go on") answers that question only; only the user changes the mode.
 
+## Research (design note or 3+ parts depending on anything outside the repo — before the design note)
+- Discovery skipped (reason):
+- Summary (3–5 lines from research.txt; stale/unconfirmed facts the plan needs → the user):
+- Decision: build | reuse <x> | adapt <x> — why
+
 ## Design note (only for ambiguous jobs — needs user approval before any brief)
 - Goal:
 - Chosen approach:            Rejected alternative (one line):

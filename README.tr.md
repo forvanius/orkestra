@@ -2,7 +2,7 @@
 
 İşi birkaç ajana bölen, her değişikliği başka bir firmanın modeline inceleten ve değişikliğin birleşip birleşmeyeceğine bir modelin değil bir betiğin karar verdiği bir Claude Code eklentisi.
 
-[English](README.md) · MIT · `0.6.3` · test takımı Linux, macOS ve Windows'ta geçiyor
+[English](README.md) · MIT · `0.6.4` · test takımı Linux, macOS ve Windows'ta geçiyor
 
 Bir **şef** planlar ve karar verir. **Yazıcıların** her biri kendi dosyalarının sahibidir. **Diğer firmadan bir inceleyici** (Claude'un işini Codex, Codex'in işini Claude) hata arar. Küçük bir **doğrulayıcı** testleri çalıştırır. Bir ajanın "bitti"si, ancak çalıştırdığı komutlar ve çıkış kodlarıyla birlikte sayılır.
 
@@ -61,6 +61,7 @@ flowchart LR
 ```
 
 1. **Kapsam.** Şef neyin zaten var olduğuna bakar ve size yalnızca yönü değiştiren soruları sorar; ayrıca her işin başında bir kez ne sıklıkla danışacağını sorar: `auto` (sona kadar kendisi yapar), `checkpoints` (planı onaylarsınız, her parça birleşince kısa ilerleme notu ve açık kararlar gelir) ya da `ask` (her kararda sorar).
+   Repo dışındaki bir şeye dayanan büyük bir işte önce bir araştırmacı, tarihli kaynaklarla, bunun zaten yapılıp yapılmadığını, başkalarının nasıl yaptığını ve neyin güncel olduğunu bulur; yazmak mı, hazırını kullanmak mı kararını şef panoya yazar.
 2. **Bölme.** İş bir panoda (`.orkestra/<iş>/board.md`, git'e girmez) parçalara ayrılır. Her parça kendi dosyalarının sahibidir; paralel yazıcılar asla aynı dosyaya dokunmaz.
 3. **Yazma.** Her parça onu bitirebilecek en ucuz araca gider: geniş ya da görsel işler Codex'e, bitirmek için çalıştırılması gereken kod bir Claude işçiye, mekanik düzenlemeler Haiku'ya.
 4. **Doğrulama.** Küçük bir model kabul komutunu çalıştırır. Yazıcı kendi işini onaylayamaz.
@@ -147,7 +148,7 @@ Panoda bir parçanın kanıtı şöyle görünür:
 
 ## Durum
 
-`0.6.3`. Varsayılan yazıcı Codex. Sonnet yerel hata ayıklamayı ve zor çok dosyalı değişiklikleri, Haiku kısa kontrolleri üstlenir. Arka plandaki işler tamamlanınca tek bildirim gelir. Yönü siz belirlersiniz, kararları onaylarsınız ve kararlaştırılan gerçek kullanım testi için kısa bir deneme notu alırsınız. Kontrol noktalarında `usage_sum.js --here --budget <pano>` Claude ve şefin okumalarını ve geçen süreyi planla karşılaştırır. `guarded.js quota` Claude'un beş saatlik kullanımını tahmin eder.
+`0.6.4`. Repo dışındaki bir şeye dayanan büyük bir iş keşifle başlar: zaten yapılmış mı, başkaları nasıl yapıyor, ne güncel; tarihli kaynaklar ve panoda yazmak-ya-da-hazırını-kullanmak kararı. Varsayılan yazıcı Codex. Sonnet yerel hata ayıklamayı ve zor çok dosyalı değişiklikleri, Haiku kısa kontrolleri üstlenir. Arka plandaki işler tamamlanınca tek bildirim gelir. Yönü siz belirlersiniz, kararları onaylarsınız ve kararlaştırılan gerçek kullanım testi için kısa bir deneme notu alırsınız. Kontrol noktalarında `usage_sum.js --here --budget <pano>` Claude ve şefin okumalarını ve geçen süreyi planla karşılaştırır. `guarded.js quota` Claude'un beş saatlik kullanımını tahmin eder.
 
 Ekim 2026'dan beri yazarın projelerinde kullanılıyor. Birleştirme kapısı (commit'e bağlı onay, yüksek riskli parçalar için iki inceleme, kırmızı kontrol) biri ilgisiz bir projede olmak üzere beş pilot işte çalıştı. Issue'larınız ve kendi rakamlarınız (çağrılar, rol başına okumalar, bulunan hatalar) memnuniyetle karşılanır.
 
